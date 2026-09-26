@@ -377,7 +377,7 @@ function fieldHtml(f, v) {
         <p class="hint">JPG, PNG, WEBP tối đa 8MB. Ảnh được tự động tối ưu.</p></div>
         <input type="hidden" name="${f.name}" value="${esc(val)}" data-thumb="${esc(f.thumb || '')}">
       </div></div>`;
-    default: return `<div class="field"><label for="${id}">${f.label}${req}</label><input id="${id}" name="${f.name}" type="${f.type === 'number' ? 'number' : 'text'}" ${f.type === 'number' ? 'min="0" step="1000" inputmode="numeric"' : ''} value="${esc(val)}" maxlength="${f.max || 120}">${hint}</div>`;
+    default: return `<div class="field"><label for="${id}">${f.label}${req}</label><input id="${id}" name="${f.name}" type="${f.type === 'number' ? 'number' : 'text'}" ${f.type === 'number' ? `min="0" step="${f.step || 1000}" inputmode="numeric"` : ''} value="${esc(val)}" maxlength="${f.max || 120}" ${f.suggest?.length ? `list="${id}-list" autocomplete="off"` : ''}>${f.suggest?.length ? `<datalist id="${id}-list">${f.suggest.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>` : ''}${hint}</div>`;
   }
 }
 
@@ -400,6 +400,8 @@ function wireUpload(box, onDone) {
       prev.innerHTML = `<img src="${esc(res.thumb)}" alt="">`;
       setFieldError(file, '');
       $('[data-clear]', box)?.removeAttribute('hidden');
+      const label = $('[data-after]', box);
+      if (label) label.textContent = label.dataset.after;
       onDone?.(res);
     } catch (e) {
       prev.innerHTML = icon('image', 28);
@@ -528,28 +530,33 @@ async function renderCategories() {
   });
 }
 
+// Fields of a service (menu item); shared by the "Dịch vụ" page and the menu editor in "Thiết kế giao diện".
+function serviceFields(services) {
+  const groups = [...new Set(services.map((s) => s.group).filter(Boolean))];
+  return [
+    { name: 'group', label: 'Nhóm trong menu', max: 40, suggest: groups, hint: 'Ví dụ: Sơn gel, Nối móng, Chăm sóc. Các dịch vụ cùng nhóm được xếp chung dưới một tiêu đề.' },
+    { name: 'name', label: 'Tên dịch vụ', required: true, min: 2, max: 80 },
+    { name: 'price_from', label: 'Giá (VNĐ)', type: 'number', hint: 'Để 0 nếu muốn hiển thị "Liên hệ".' },
+    { name: 'duration', label: 'Thời lượng (phút)', type: 'number', step: 5, default: 60 },
+    { name: 'description', label: 'Mô tả ngắn', type: 'textarea', max: 300 },
+    { name: 'active', label: 'Hiển thị trên trang khách', type: 'checkbox', default: true },
+  ];
+}
+
 async function renderServices() {
   const { services } = await api('/api/admin/services');
   simpleTable({
     rows: services, addLabel: 'Thêm dịch vụ', endpoint: '/api/admin/services', reload: renderServices,
-    emptyTitle: 'Chưa có dịch vụ', emptyText: 'Khi có dịch vụ, khách hàng sẽ chọn dịch vụ lúc đặt lịch.',
-    toValues: (r) => ({ ...r, active: !!r.active }),
+    emptyTitle: 'Chưa có dịch vụ', emptyText: 'Dịch vụ hiện trong menu trang chủ và để khách chọn khi đặt lịch.',
+    toValues: (r) => ({ ...r, group: r.group || '', active: !!r.active }),
     columns: [
-      ['Ảnh', (r) => (r.image ? `<img class="thumb" src="${esc(r.image)}" alt="">` : '—')],
+      ['Nhóm', (r) => esc(r.group || '—')],
       ['Tên dịch vụ', (r) => `<div class="strong">${esc(r.name)}</div><div class="small">${esc(r.description || '')}</div>`],
-      ['Giá từ', (r) => vnd(r.price_from)],
+      ['Giá', (r) => vnd(r.price_from)],
       ['Thời lượng', (r) => (r.duration ? `${r.duration} phút` : '—')],
       ['Hiển thị', (r) => (r.active ? '<span class="pill on">Đang hiện</span>' : '<span class="pill">Đang ẩn</span>')],
     ],
-    fields: [
-      { name: 'image', label: 'Ảnh minh họa', type: 'image' },
-      { name: 'name', label: 'Tên dịch vụ', required: true, min: 2, max: 80 },
-      { name: 'description', label: 'Mô tả ngắn', type: 'textarea', max: 300 },
-      { name: 'price_from', label: 'Giá từ (VNĐ)', type: 'number' },
-      { name: 'duration', label: 'Thời lượng (phút)', type: 'number', default: 60 },
-      { name: 'sort', label: 'Thứ tự hiển thị', type: 'number', default: 0 },
-      { name: 'active', label: 'Hiển thị trên trang khách', type: 'checkbox', default: true },
-    ],
+    fields: [...serviceFields(services), { name: 'sort', label: 'Thứ tự hiển thị', type: 'number', step: 1, default: 0 }],
   });
 }
 
@@ -588,6 +595,70 @@ const PRESETS = [
   { name: 'Lavender', primaryColor: '#6D4C9F', accentColor: '#C29A6B', bgColor: '#F9F7FC', textColor: '#271C33' },
 ];
 
+// Inline list of menu items inside "Thiết kế giao diện". Changes go straight to the API.
+async function renderServiceEditor(box, onChange) {
+  let services;
+  try {
+    ({ services } = await api('/api/admin/services'));
+  } catch (e) {
+    box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+    return;
+  }
+  const refresh = () => { renderServiceEditor(box, onChange); onChange?.(); };
+  const body = (s, patch = {}) => ({ name: s.name, group: s.group || '', description: s.description || '', price_from: s.price_from, duration: s.duration, sort: s.sort, active: !!s.active, ...patch });
+  box.innerHTML = `
+    ${services.length ? `<ul class="svc-list">${services.map((s, i) => `
+      <li class="svc-row${s.active ? '' : ' off'}">
+        <div class="svc-order">
+          <button type="button" class="icon-btn" data-move="-1" data-i="${i}" aria-label="Đưa ${esc(s.name)} lên" ${i === 0 ? 'disabled' : ''}>${icon('up', 16)}</button>
+          <button type="button" class="icon-btn" data-move="1" data-i="${i}" aria-label="Đưa ${esc(s.name)} xuống" ${i === services.length - 1 ? 'disabled' : ''}>${icon('down', 16)}</button>
+        </div>
+        <div class="svc-info"><strong>${esc(s.name)}</strong><small>${esc(s.group || 'Không có nhóm')} · ${vnd(s.price_from)}${s.duration ? ` · ${s.duration} phút` : ''}${s.active ? '' : ' · đang ẩn'}</small></div>
+        <div class="row-actions">
+          <button type="button" class="icon-btn" data-edit="${i}" aria-label="Sửa ${esc(s.name)}">${icon('pencil', 18)}</button>
+          <button type="button" class="icon-btn danger" data-del="${i}" aria-label="Xóa ${esc(s.name)}">${icon('trash', 18)}</button>
+        </div>
+      </li>`).join('')}</ul>` : '<p class="hint">Chưa có dịch vụ nào.</p>'}
+    <button type="button" class="btn btn-ghost btn-sm" data-add>${icon('plus', 16)}Thêm dịch vụ</button>`;
+
+  box.onclick = async (e) => {
+    const t = e.target.closest('button');
+    if (!t || t.disabled) return;
+    try {
+      if (t.matches('[data-add]')) {
+        const nextSort = services.length ? Math.max(...services.map((s) => s.sort)) + 1 : 0;
+        openEditor({
+          title: 'Thêm dịch vụ', fields: serviceFields(services), values: { group: services.at(-1)?.group || '' },
+          onSubmit: async (data) => { await api('/api/admin/services', { method: 'POST', body: { ...data, sort: nextSort } }); toast('Đã thêm dịch vụ.', 'success'); refresh(); },
+        });
+      } else if (t.dataset.edit) {
+        const s = services[Number(t.dataset.edit)];
+        openEditor({
+          title: 'Sửa dịch vụ', fields: serviceFields(services), values: { ...s, group: s.group || '', active: !!s.active },
+          onSubmit: async (data) => { await api(`/api/admin/services/${s.id}`, { method: 'PUT', body: body(s, data) }); toast('Đã lưu.', 'success'); refresh(); },
+        });
+      } else if (t.dataset.del) {
+        const s = services[Number(t.dataset.del)];
+        if (!confirm(`Xóa dịch vụ "${s.name}"? Lịch hẹn cũ vẫn được giữ lại.`)) return;
+        await api(`/api/admin/services/${s.id}`, { method: 'DELETE' });
+        toast('Đã xóa.', 'success');
+        refresh();
+      } else if (t.dataset.move) {
+        // Renumber everything so the order is explicit, then swap the two neighbours.
+        const order = services.slice();
+        const i = Number(t.dataset.i);
+        const j = i + Number(t.dataset.move);
+        [order[i], order[j]] = [order[j], order[i]];
+        t.disabled = true;
+        await Promise.all(order.map((s, k) => (s.sort === k ? null : api(`/api/admin/services/${s.id}`, { method: 'PUT', body: body(s, { sort: k }) }))));
+        refresh();
+      }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+}
+
 async function renderAppearance() {
   settings = await api('/api/admin/settings');
   const s = settings;
@@ -600,7 +671,7 @@ async function renderAppearance() {
     <div class="upload logo" data-upload="logoImage" data-kind="logo">
       <div class="upload-preview">${s.logoImage ? `<img src="${esc(s.logoImage)}" alt="">` : icon('image', 28)}</div>
       <div><div class="upload-actions">
-        <span class="btn btn-ghost btn-sm upload-btn">${icon('upload', 16)}${s.logoImage ? 'Thay logo' : 'Tải logo lên'}<input type="file" accept="image/png,image/webp,image/jpeg,image/avif" aria-label="Tải logo"></span>
+        <span class="btn btn-ghost btn-sm upload-btn">${icon('upload', 16)}<span data-after="Thay logo">${s.logoImage ? 'Thay logo' : 'Tải logo lên'}</span><input type="file" accept="image/png,image/webp,image/jpeg,image/avif" aria-label="Tải logo"></span>
         <button type="button" class="btn btn-ghost btn-sm" data-clear ${s.logoImage ? '' : 'hidden'}>${icon('trash', 16)}Gỡ logo</button>
       </div><p class="hint">Nên dùng PNG nền trong suốt, tối đa 8MB. Logo cũng được dùng làm biểu tượng trên tab trình duyệt.</p></div>
       <input type="hidden" name="logoImage" value="${esc(s.logoImage)}">
@@ -633,6 +704,31 @@ async function renderAppearance() {
           ${image('heroImage', 'Ảnh hero')}
           ${text('aboutTitle', 'Tiêu đề phần giới thiệu')}${area('aboutText', 'Nội dung giới thiệu')}${area('aboutQuote', 'Câu trích dẫn')}
           ${image('aboutImage', 'Ảnh phần giới thiệu')}
+        </div></details>
+        <details id="menu-group"><summary>${icon('scissors', 18)}Menu dịch vụ</summary><div class="inner">
+          <p class="help">Phần "Dịch vụ" trên trang chủ: một bên là ảnh bảng giá đầy đủ (khách nhấn để phóng to), bên kia là danh sách dịch vụ để khách bấm đặt lịch.</p>
+          ${text('servicesEyebrow', 'Dòng chữ nhỏ phía trên', 40)}${text('servicesTitle', 'Tiêu đề', 80)}${area('servicesSubtitle', 'Mô tả dưới tiêu đề')}
+          <div class="field"><span class="label">Ảnh menu (bảng giá đầy đủ)</span>
+            <div class="upload menu-upload" data-upload="servicesMenuImage" data-kind="menu">
+              <div class="upload-preview">${s.servicesMenuThumb || s.servicesMenuImage ? `<img src="${esc(s.servicesMenuThumb || s.servicesMenuImage)}" alt="">` : icon('image', 28)}</div>
+              <div><div class="upload-actions">
+                <span class="btn btn-ghost btn-sm upload-btn">${icon('upload', 16)}<span data-after="Thay ảnh menu">${s.servicesMenuImage ? 'Thay ảnh menu' : 'Tải ảnh menu'}</span><input type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="Tải ảnh menu dịch vụ"></span>
+                <button type="button" class="btn btn-ghost btn-sm" data-clear ${s.servicesMenuImage ? '' : 'hidden'}>${icon('trash', 16)}Gỡ ảnh</button>
+              </div><p class="hint">Ảnh dọc, chữ rõ nét, tối đa 8MB. Không có ảnh thì danh sách dịch vụ chiếm cả chiều ngang.</p></div>
+              <input type="hidden" name="servicesMenuImage" value="${esc(s.servicesMenuImage)}">
+              <input type="hidden" name="servicesMenuThumb" value="${esc(s.servicesMenuThumb)}" data-from="thumb">
+            </div></div>
+          <div class="field"><span class="label" id="side-label">Vị trí ảnh menu</span>
+            <input type="hidden" name="servicesImageSide" value="${esc(s.servicesImageSide)}">
+            <div class="range" role="group" aria-labelledby="side-label">
+              <button type="button" data-side="left" aria-pressed="${s.servicesImageSide !== 'right'}">Ảnh bên trái</button>
+              <button type="button" data-side="right" aria-pressed="${s.servicesImageSide === 'right'}">Ảnh bên phải</button>
+            </div></div>
+          ${text('servicesNote', 'Ghi chú dưới menu (tùy chọn)', 200)}
+          <div class="field"><span class="label">Các dịch vụ trong menu</span>
+            <p class="hint">Thêm, sửa, sắp xếp được lưu ngay, không cần bấm "Lưu & áp dụng".</p>
+            <div class="svc-editor" id="svc-editor"><div class="skeleton" style="height:120px"></div></div>
+          </div>
         </div></details>
         <details><summary>${icon('grid', 18)}Các phần hiển thị</summary><div class="inner" style="display:grid">
           ${toggle('showAbout', 'Giới thiệu / triết lý')}${toggle('showServices', 'Dịch vụ')}${toggle('showWhy', 'Vì sao chọn chúng tôi')}
@@ -680,13 +776,28 @@ async function renderAppearance() {
   });
   form.addEventListener('change', push);
   for (const up of $$('[data-upload]', form)) wireUpload(up, push);
-  $('[data-clear]', form).onclick = (e) => {
-    const box = e.currentTarget.closest('[data-upload]');
-    for (const h of $$('input[type=hidden]', box)) h.value = '';
-    $('.upload-preview', box).innerHTML = icon('image', 28);
-    e.currentTarget.hidden = true;
-    push();
-  };
+  for (const btn of $$('[data-clear]', form)) {
+    btn.onclick = () => {
+      const box = btn.closest('[data-upload]');
+      for (const h of $$('input[type=hidden]', box)) h.value = '';
+      $('.upload-preview', box).innerHTML = icon('image', 28);
+      btn.hidden = true;
+      push();
+    };
+  }
+  for (const b of $$('[data-side]', form)) {
+    b.onclick = () => {
+      form.elements.servicesImageSide.value = b.dataset.side;
+      for (const x of $$('[data-side]', form)) x.setAttribute('aria-pressed', String(x === b));
+      push();
+    };
+  }
+  // Opening the menu group scrolls the preview to the services section.
+  $('#menu-group').addEventListener('toggle', (e) => {
+    if (e.target.open) pv.contentDocument?.getElementById('services')?.scrollIntoView({ behavior: 'smooth' });
+  });
+  const reloadPreview = () => pv.contentWindow?.location.reload();
+  renderServiceEditor($('#svc-editor'), reloadPreview);
   $$('[data-preset]').forEach((b) => (b.onclick = () => {
     const p = PRESETS[b.dataset.preset];
     for (const k of ['primaryColor', 'accentColor', 'bgColor', 'textColor']) { form.elements[k].value = p[k]; $(`[data-for="${k}"]`).value = p[k]; }

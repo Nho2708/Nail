@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS services (
   sort_order   INTEGER      NOT NULL DEFAULT 0,
   is_active    BOOLEAN      NOT NULL DEFAULT TRUE
 );
+-- menu section heading a service is listed under, e.g. "Sơn gel", "Nối móng"
+ALTER TABLE services ADD COLUMN IF NOT EXISTS group_name VARCHAR(40);
 
 CREATE TABLE IF NOT EXISTS designs (
   id          SERIAL PRIMARY KEY,

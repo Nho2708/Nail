@@ -115,6 +115,20 @@ td a:hover { text-decoration: underline; }
 .upload-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .upload.logo .upload-preview { width: 180px; height: 80px; padding: 8px; background: repeating-conic-gradient(#f1ecea 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .upload.logo .upload-preview img { object-fit: contain; }
+.menu-upload .upload-preview { width: 96px; height: 128px; }
+.menu-upload .upload-preview img { object-fit: cover; object-position: top; }
+.svc-editor { display: grid; gap: 10px; justify-items: start; }
+.svc-list { list-style: none; margin: 0; padding: 0; width: 100%; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.svc-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: #fff; }
+.svc-row:last-child { border-bottom: 0; }
+.svc-row.off .svc-info { opacity: .55; }
+.svc-order { display: flex; flex-direction: column; }
+.svc-order .icon-btn { width: 32px; height: 26px; border-radius: 6px; }
+.svc-order .icon-btn:disabled { opacity: .25; cursor: default; }
+.svc-info { flex: 1; min-width: 0; display: grid; }
+.svc-info strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-info small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appearance .help { margin-bottom: 14px; }
 .check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-size: 14px; font-weight: 500; }
 .check input { width: 18px; height: 18px; accent-color: var(--primary); }
 .color-field { display: flex; gap: 8px; align-items: center; }
@@ -175,3 +189,6 @@ td a:hover { text-decoration: underline; }
   .toolbar .search { flex: 1 1 100%; }
   .kpi .val { font-size: 26px; }
 }
+
+/* toasts sit bottom-right so they never cover the sticky save bar */
+body.admin #toasts { left: auto; right: 24px; transform: none; }

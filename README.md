@@ -64,7 +64,7 @@ Database không có dữ liệu mẫu. Sau khi đăng nhập admin, nên tạo t
 
 1. **Danh mục mẫu** (French, Sơn gel trơn, Mắt mèo…)
 2. **Màu sơn** (tên, mã màu, hiệu ứng): dùng để lọc mẫu và cho phần thử màu 3D
-3. **Dịch vụ** (giá từ, thời lượng): khách chọn khi đặt lịch
+3. **Menu dịch vụ** (Thiết kế giao diện → Menu dịch vụ): tải ảnh bảng giá đầy đủ, thêm các dịch vụ theo nhóm (tên, giá, thời lượng), sắp xếp, chọn ảnh nằm bên trái hay phải. Khách bấm "Đặt" ở từng dịch vụ để đặt lịch; danh sách này cũng là ô chọn dịch vụ trong form đặt lịch
 4. **Mẫu nail** (tải ảnh, gán danh mục và màu, giá, đánh dấu nổi bật)
 5. **Thiết kế giao diện**: logo, tên tiệm, số điện thoại, địa chỉ, giờ mở cửa, số Zalo, username Messenger…
 6. **Thông báo**: nhập token Zalo OA / Messenger / Telegram rồi bấm *Gửi tin thử*
