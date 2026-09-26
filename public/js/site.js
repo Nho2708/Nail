@@ -58,11 +58,30 @@ function fillSettings() {
   const tel = (s.phone || '').replace(/[^\d+]/g, '');
   for (const el of $$('[data-href="tel"]')) el.href = `tel:${tel}`;
   for (const el of $$('[data-section]')) el.hidden = s[el.dataset.section] === false;
+  renderLogo(s);
   const hero = $('#hero-img');
   if (s.heroImage) hero.src = s.heroImage;
   const about = $('#about-img');
   if (s.aboutImage) about.src = s.aboutImage; else about.parentElement.hidden = true;
   $('.topbar').hidden = !s.address && !s.hours && !s.phone;
+}
+
+const DEFAULT_FAVICON = document.getElementById('favicon')?.href;
+function renderLogo(s) {
+  const logo = $('#brand-logo');
+  const hasLogo = !!s.logoImage;
+  logo.hidden = !hasLogo;
+  $('.brand-mark').hidden = hasLogo;
+  // The brand text can only be hidden when a logo image takes its place.
+  const showText = !hasLogo || s.showBrandText !== false;
+  $('.brand-text').hidden = !showText;
+  if (hasLogo) {
+    if (logo.getAttribute('src') !== s.logoImage) logo.src = s.logoImage;
+    logo.alt = showText ? '' : s.brandName;
+  }
+  document.documentElement.style.setProperty('--logo-h', `${Number(s.logoHeight) || 44}px`);
+  const fav = $('#favicon');
+  if (fav) fav.href = s.logoIcon || s.logoImage || DEFAULT_FAVICON;
 }
 
 function renderContact() {
@@ -693,6 +712,7 @@ function visitorId() {
 }
 function track(path = location.pathname, designId) {
   if (window.self !== window.top) return; // admin preview iframe
+  if (new URLSearchParams(location.search).get('login') === 'admin') return; // admin on the way to /admin
   const body = JSON.stringify({ visitor: visitorId(), path, referrer: designId ? '' : document.referrer, designId });
   fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
 }

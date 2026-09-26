@@ -59,6 +59,10 @@ async function transaction(fn) {
 // ---------- settings (defaults live in code, overrides in dbo.Settings) ----------
 const DEFAULT_SETTINGS = {
   brandName: 'Lumière Nail Studio',
+  logoImage: '',
+  logoIcon: '',
+  logoHeight: '44',
+  showBrandText: true,
   tagline: 'Móng đẹp. Sang trọng tinh tế.',
   heroEyebrow: 'Nail Art Studio · Sài Gòn',
   heroTitle: 'Bộ móng được chăm chút như một tác phẩm',

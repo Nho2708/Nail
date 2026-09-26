@@ -33,13 +33,21 @@ async function boot() {
     return;
   }
   applyTheme({ ...settings, bgColor: '#F7F4F2' });
-  $('#side-brand').textContent = settings.brandName;
+  renderSideBrand();
   $('#who').textContent = me.name;
   window.addEventListener('hashchange', route);
   route();
   pollBookings(true);
   setInterval(pollBookings, 20000);
   wireShell();
+}
+
+function renderSideBrand() {
+  $('#side-brand').textContent = settings.brandName;
+  const logo = $('#side-logo');
+  logo.hidden = !settings.logoImage;
+  $('#side-mark').hidden = !!settings.logoImage;
+  if (settings.logoImage) logo.src = settings.logoImage;
 }
 
 function wireShell() {
@@ -362,9 +370,9 @@ function fieldHtml(f, v) {
   }
 }
 
-function wireUpload(box) {
+function wireUpload(box, onDone) {
   const file = $('input[type=file]', box);
-  const hidden = $('input[type=hidden]', box);
+  const hidden = $('input[type=hidden]:not([data-from])', box);
   file.onchange = async () => {
     const f = file.files[0];
     if (!f) return;
@@ -374,11 +382,14 @@ function wireUpload(box) {
     const form = new FormData();
     form.append('image', f);
     try {
-      const { url, thumb } = await api('/api/admin/upload', { method: 'POST', form });
-      hidden.value = url;
-      hidden.dataset.thumb = thumb;
-      prev.innerHTML = `<img src="${esc(thumb)}" alt="">`;
+      const res = await api(`/api/admin/upload${box.dataset.kind ? `?kind=${box.dataset.kind}` : ''}`, { method: 'POST', form });
+      hidden.value = res.url;
+      hidden.dataset.thumb = res.thumb;
+      for (const extra of $$('input[type=hidden][data-from]', box)) extra.value = res[extra.dataset.from] || '';
+      prev.innerHTML = `<img src="${esc(res.thumb)}" alt="">`;
       setFieldError(file, '');
+      $('[data-clear]', box)?.removeAttribute('hidden');
+      onDone?.(res);
     } catch (e) {
       prev.innerHTML = icon('image', 28);
       setFieldError(file, e.message);
@@ -574,6 +585,18 @@ async function renderAppearance() {
   const color = (k, label) => `<div class="field"><label for="ap-${k}">${label}</label><div class="color-field"><input type="color" value="${esc(s[k])}" data-for="${k}" aria-label="${label}"><input id="ap-${k}" name="${k}" value="${esc(s[k])}" maxlength="7" spellcheck="false"></div></div>`;
   const select = (k, label, opts) => `<div class="field"><label for="ap-${k}">${label}</label><select id="ap-${k}" name="${k}">${opts.map((o) => `<option ${o === s[k] ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`;
   const toggle = (k, label) => `<label class="check"><input type="checkbox" name="${k}" ${s[k] ? 'checked' : ''}>${label}</label>`;
+  const logo = () => `<div class="field"><span class="label">Logo</span>
+    <div class="upload logo" data-upload="logoImage" data-kind="logo">
+      <div class="upload-preview">${s.logoImage ? `<img src="${esc(s.logoImage)}" alt="">` : icon('image', 28)}</div>
+      <div><div class="upload-actions">
+        <span class="btn btn-ghost btn-sm upload-btn">${icon('upload', 16)}${s.logoImage ? 'Thay logo' : 'Tải logo lên'}<input type="file" accept="image/png,image/webp,image/jpeg,image/avif" aria-label="Tải logo"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-clear ${s.logoImage ? '' : 'hidden'}>${icon('trash', 16)}Gỡ logo</button>
+      </div><p class="hint">Nên dùng PNG nền trong suốt, tối đa 8MB. Logo cũng được dùng làm biểu tượng trên tab trình duyệt.</p></div>
+      <input type="hidden" name="logoImage" value="${esc(s.logoImage)}">
+      <input type="hidden" name="logoIcon" value="${esc(s.logoIcon)}" data-from="icon">
+    </div></div>
+    <div class="field"><label for="ap-logoHeight">Chiều cao logo: <output id="logo-h-out">${esc(s.logoHeight)}</output>px</label><input id="ap-logoHeight" name="logoHeight" type="range" min="24" max="96" value="${esc(s.logoHeight)}"></div>
+    ${toggle('showBrandText', 'Hiện tên tiệm & khẩu hiệu cạnh logo')}`;
   const image = (k, label) => `<div class="field"><span class="label">${label}</span><div class="upload" data-upload="${k}"><div class="upload-preview">${s[k] ? `<img src="${esc(s[k])}" alt="">` : icon('image', 28)}</div>
     <div><span class="btn btn-ghost btn-sm upload-btn">${icon('upload', 16)}Đổi ảnh<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="${label}"></span></div>
     <input type="hidden" name="${k}" value="${esc(s[k])}"></div></div>`;
@@ -589,8 +612,11 @@ async function renderAppearance() {
           <div class="field"><label for="ap-radius">Độ bo góc: <output id="radius-out">${esc(s.radius)}</output>px</label><input id="ap-radius" name="radius" type="range" min="0" max="28" value="${esc(s.radius)}"></div>
           <p class="hint" id="contrast-warn" role="status"></p>
         </div></details>
-        <details><summary>${icon('sparkles', 18)}Thương hiệu & nội dung</summary><div class="inner">
+        <details open><summary>${icon('gem', 18)}Logo & thương hiệu</summary><div class="inner">
+          ${logo()}
           ${text('brandName', 'Tên tiệm', 60)}${text('tagline', 'Khẩu hiệu')}
+        </div></details>
+        <details><summary>${icon('sparkles', 18)}Nội dung trang chủ</summary><div class="inner">
           ${text('heroEyebrow', 'Dòng giới thiệu nhỏ (hero)')}${text('heroTitle', 'Tiêu đề lớn (hero)', 120)}${area('heroSubtitle', 'Mô tả (hero)')}
           ${image('heroImage', 'Ảnh hero')}
           ${text('aboutTitle', 'Tiêu đề phần giới thiệu')}${area('aboutText', 'Nội dung giới thiệu')}${area('aboutQuote', 'Câu trích dẫn')}
@@ -637,13 +663,18 @@ async function renderAppearance() {
     if (t.type === 'color' && t.dataset.for) form.elements[t.dataset.for].value = t.value.toUpperCase();
     if (t.name && /Color$/.test(t.name) && /^#[0-9a-f]{6}$/i.test(t.value)) $(`[data-for="${t.name}"]`).value = t.value;
     if (t.name === 'radius') $('#radius-out').textContent = t.value;
+    if (t.name === 'logoHeight') $('#logo-h-out').textContent = t.value;
     push();
   });
   form.addEventListener('change', push);
-  for (const up of $$('[data-upload]', form)) {
-    wireUpload(up);
-    $('input[type=file]', up).addEventListener('change', () => setTimeout(push, 800));
-  }
+  for (const up of $$('[data-upload]', form)) wireUpload(up, push);
+  $('[data-clear]', form).onclick = (e) => {
+    const box = e.currentTarget.closest('[data-upload]');
+    for (const h of $$('input[type=hidden]', box)) h.value = '';
+    $('.upload-preview', box).innerHTML = icon('image', 28);
+    e.currentTarget.hidden = true;
+    push();
+  };
   $$('[data-preset]').forEach((b) => (b.onclick = () => {
     const p = PRESETS[b.dataset.preset];
     for (const k of ['primaryColor', 'accentColor', 'bgColor', 'textColor']) { form.elements[k].value = p[k]; $(`[data-for="${k}"]`).value = p[k]; }
@@ -662,7 +693,7 @@ async function renderAppearance() {
     btn.classList.add('loading');
     try {
       settings = await api('/api/admin/settings', { method: 'PUT', body: collect() });
-      $('#side-brand').textContent = settings.brandName;
+      renderSideBrand();
       applyTheme({ ...settings, bgColor: '#F7F4F2' });
       toast('Đã lưu giao diện. Trang khách hàng đã được cập nhật.', 'success');
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }

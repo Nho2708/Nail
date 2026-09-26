@@ -3,7 +3,7 @@
 Website có 2 giao diện:
 
 - **Khách hàng** (`/`): xem bộ sưu tập mẫu nail (lọc theo danh mục và màu sơn), xem ảnh lớn / phóng to, thử màu trên **mô hình 3D** (màu, hiệu ứng bóng / lì / tráng gương / mắt mèo, dáng móng, đầu French), đặt lịch hoặc yêu cầu tư vấn **không cần đăng nhập** (có kiểm tra dữ liệu). Khách có tài khoản chỉ cần chọn mẫu rồi bấm *Đặt lịch* hoặc *Tư vấn*, thông tin liên hệ lấy tự động từ tài khoản.
-- **Quản trị** (`/admin`, chỉ tài khoản quyền admin): thống kê lượt truy cập, quản lý lịch hẹn, mẫu nail, màu sơn, danh mục, dịch vụ, khách hàng & phân quyền, chỉnh **giao diện trang đặt lịch** (màu, font, bo góc, nội dung, ảnh, bật/tắt từng phần, có xem trước trực tiếp) và cấu hình **thông báo về Zalo OA / Messenger / Telegram / Webhook**.
+- **Quản trị** (`/admin`, chỉ tài khoản quyền admin): thống kê lượt truy cập, quản lý lịch hẹn, mẫu nail, màu sơn, danh mục, dịch vụ, khách hàng & phân quyền, chỉnh **giao diện trang đặt lịch** (logo & biểu tượng tab, màu, font, bo góc, nội dung, ảnh, bật/tắt từng phần, có xem trước trực tiếp) và cấu hình **thông báo về Zalo OA / Messenger / Telegram / Webhook**.
 
 Giao diện được thiết kế lại theo bố cục của renai.beauty (theo phong cách sang trọng tối giản) bằng skill `ui-ux-pro-max`, dùng phong cách Soft UI với font Playfair Display và Be Vietnam Pro.
 

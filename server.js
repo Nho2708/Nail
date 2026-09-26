@@ -337,6 +337,14 @@ admin.post('/upload', upload.single('image'), h(async (req, res) => {
   const base = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   try {
     const img = sharp(req.file.buffer, { failOn: 'error' }).rotate();
+    if (req.query.kind === 'logo') {
+      // Logo keeps transparency; a square PNG icon is derived for the browser tab.
+      await img.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 })
+        .toFile(path.join(UPLOAD_DIR, `${base}.webp`));
+      await img.clone().resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png()
+        .toFile(path.join(UPLOAD_DIR, `${base}-icon.png`));
+      return res.json({ url: `/uploads/${base}.webp`, thumb: `/uploads/${base}.webp`, icon: `/uploads/${base}-icon.png` });
+    }
     await img.clone().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 })
       .toFile(path.join(UPLOAD_DIR, `${base}.webp`));
     await img.clone().resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 })
@@ -443,6 +451,13 @@ admin.put('/settings', h(async (req, res) => {
   }
   if (b.heroImage != null && b.heroImage !== '' && !localImage(b.heroImage)) return res.status(422).json({ error: 'Ảnh hero không hợp lệ.' });
   if (b.aboutImage != null && b.aboutImage !== '' && !localImage(b.aboutImage)) return res.status(422).json({ error: 'Ảnh giới thiệu không hợp lệ.' });
+  for (const k of ['logoImage', 'logoIcon']) {
+    if (b[k] != null && b[k] !== '' && !localImage(b[k])) return res.status(422).json({ error: 'Logo không hợp lệ, vui lòng tải lại.' });
+  }
+  if (b.logoHeight != null) {
+    const n = Number(b.logoHeight);
+    if (!Number.isInteger(n) || n < 24 || n > 96) return res.status(422).json({ error: 'Chiều cao logo phải từ 24 đến 96px.' });
+  }
   if (b.notifyWebhookUrl && !/^https:\/\//.test(b.notifyWebhookUrl)) return res.status(422).json({ error: 'Webhook phải là URL https://' });
   await saveSettings(b);
   res.json(await getSettings({ includePrivate: true }));
