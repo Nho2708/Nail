@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quản trị — Nail Studio</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cellipse cx='16' cy='14' rx='8' ry='12' fill='%239D2B5B'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="admin">
+  <a class="skip-link" href="#view">Bỏ qua điều hướng</a>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Menu quản trị">
+      <div class="side-brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div><strong id="side-brand">Nail Studio</strong><small>Trang quản trị</small></div>
+      </div>
+      <nav class="side-nav" id="side-nav">
+        <p class="side-group">Tổng quan</p>
+        <a href="#dashboard" data-view="dashboard"><span data-icon="dashboard"></span>Thống kê truy cập</a>
+        <a href="#bookings" data-view="bookings"><span data-icon="calendar"></span>Lịch hẹn & tư vấn<span class="count" id="pending-count" hidden></span></a>
+        <p class="side-group">Nội dung</p>
+        <a href="#designs" data-view="designs"><span data-icon="image"></span>Mẫu nail</a>
+        <a href="#colors" data-view="colors"><span data-icon="palette"></span>Màu sơn</a>
+        <a href="#categories" data-view="categories"><span data-icon="tag"></span>Danh mục mẫu</a>
+        <a href="#services" data-view="services"><span data-icon="scissors"></span>Dịch vụ</a>
+        <a href="#customers" data-view="customers"><span data-icon="users"></span>Khách hàng & phân quyền</a>
+        <p class="side-group">Cài đặt</p>
+        <a href="#appearance" data-view="appearance"><span data-icon="brush"></span>Thiết kế giao diện</a>
+        <a href="#notify" data-view="notify"><span data-icon="bell"></span>Thông báo Zalo / Messenger</a>
+        <a href="#account" data-view="account"><span data-icon="lock"></span>Tài khoản admin</a>
+      </nav>
+      <div class="side-foot">
+        <a class="btn btn-ghost btn-sm btn-block" href="/" target="_blank" rel="noopener"><span data-icon="external" data-size="16"></span>Xem trang khách</a>
+        <button class="btn btn-ghost btn-sm btn-block" id="logout"><span data-icon="logout" data-size="16"></span>Đăng xuất</button>
+      </div>
+    </aside>
+    <div class="side-scrim" id="side-scrim" hidden></div>
+
+    <div class="main">
+      <header class="topnav">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="Mở menu" aria-controls="sidebar" aria-expanded="false" data-icon="menu"></button>
+        <h1 id="view-title">Thống kê</h1>
+        <div class="topnav-right">
+          <button class="icon-btn" id="notif-btn" aria-label="Bật thông báo trình duyệt khi có lịch mới" title="Bật thông báo trình duyệt" data-icon="bell"></button>
+          <span class="who" id="who"></span>
+        </div>
+      </header>
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <dialog class="modal" id="editor" aria-labelledby="editor-title">
+    <div class="modal-head">
+      <h2 id="editor-title"></h2>
+      <button class="icon-btn" data-close aria-label="Đóng" data-icon="x"></button>
+    </div>
+    <form class="modal-body" id="editor-form" novalidate></form>
+  </dialog>
+
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

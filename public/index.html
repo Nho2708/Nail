@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nail Studio — Xem mẫu & đặt lịch làm nail</title>
+  <meta name="description" content="Xem bộ sưu tập mẫu nail, thử màu sơn 3D và đặt lịch làm nail trực tuyến chỉ trong 30 giây.">
+  <meta name="theme-color" content="#FBF7F4">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cellipse cx='16' cy='14' rx='8' ry='12' fill='%239D2B5B'/%3E%3Cellipse cx='14' cy='9' rx='2.5' ry='4' fill='%23fff' opacity='.5'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" id="theme-fonts">
+  <link rel="stylesheet" href="/css/site.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+
+  <div class="topbar">
+    <div class="container topbar-inner">
+      <span class="topbar-item" data-show="address"><span data-icon="pin" data-size="14"></span><span data-setting="address"></span></span>
+      <span class="topbar-item" data-show="hours"><span data-icon="clock" data-size="14"></span><span data-setting="hours"></span></span>
+      <a class="topbar-item" data-show="phone" data-href="tel"><span data-icon="phone" data-size="14"></span><span data-setting="phone"></span></a>
+    </div>
+  </div>
+
+  <header class="site-header" id="header">
+    <div class="container header-inner">
+      <a href="#top" class="brand" aria-label="Về đầu trang">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text"><span class="brand-name" data-setting="brandName"></span><span class="brand-tagline" data-setting="tagline"></span></span>
+      </a>
+      <nav class="main-nav" aria-label="Điều hướng chính">
+        <a href="#top">Trang chủ</a>
+        <a href="#services" data-section="showServices">Dịch vụ</a>
+        <a href="#gallery">Bộ sưu tập</a>
+        <a href="#try3d" data-section="show3D">Thử màu 3D</a>
+        <a href="#contact">Liên hệ</a>
+      </nav>
+      <div class="header-actions">
+        <div class="account" id="account-slot"></div>
+        <button class="btn btn-primary btn-sm hide-sm" data-book>Đặt lịch</button>
+        <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="Mở menu" aria-expanded="false" aria-controls="mobile-nav" data-icon="menu"></button>
+      </div>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="Menu di động" hidden>
+      <a href="#top">Trang chủ</a>
+      <a href="#services" data-section="showServices">Dịch vụ</a>
+      <a href="#gallery">Bộ sưu tập</a>
+      <a href="#try3d" data-section="show3D">Thử màu 3D</a>
+      <a href="#contact">Liên hệ</a>
+      <button class="btn btn-primary btn-block" data-book>Đặt lịch ngay</button>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" id="top">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow" data-setting="heroEyebrow"></p>
+          <h1 class="hero-title" data-setting="heroTitle"></h1>
+          <p class="hero-sub" data-setting="heroSubtitle"></p>
+          <div class="hero-ctas">
+            <button class="btn btn-primary btn-lg" data-book><span data-icon="calendar" data-size="18"></span>Đặt lịch ngay</button>
+            <a class="btn btn-ghost btn-lg" href="#gallery">Xem bộ sưu tập<span data-icon="right" data-size="18"></span></a>
+          </div>
+          <ul class="hero-points">
+            <li><span data-icon="check" data-size="16"></span>Không cần tài khoản để đặt lịch</li>
+            <li><span data-icon="check" data-size="16"></span>Xác nhận nhanh qua điện thoại</li>
+          </ul>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-arch"><img id="hero-img" alt="Bộ móng nổi bật của tiệm" width="560" height="700" fetchpriority="high"></div>
+          <button class="hero-float" id="hero-float" hidden></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="section about" id="about" data-section="showAbout">
+      <div class="container about-grid">
+        <div class="about-img"><img id="about-img" alt="Không gian làm móng" loading="lazy" width="480" height="600"></div>
+        <div>
+          <p class="eyebrow">Triết lý</p>
+          <h2 class="section-title" data-setting="aboutTitle"></h2>
+          <p class="lead" data-setting="aboutText"></p>
+          <blockquote class="quote" data-setting="aboutQuote"></blockquote>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVICES -->
+    <section class="section services" id="services" data-section="showServices">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Dịch vụ</p>
+          <h2 class="section-title">Dịch vụ đặc trưng</h2>
+        </div>
+        <div class="service-grid" id="service-grid"></div>
+      </div>
+    </section>
+
+    <!-- WHY -->
+    <section class="section why" data-section="showWhy">
+      <div class="container">
+        <div class="section-head center">
+          <p class="eyebrow">Vì sao chọn chúng tôi</p>
+          <h2 class="section-title">Trải nghiệm được chăm chút</h2>
+        </div>
+        <div class="why-grid">
+          <article class="why-card"><span class="why-ic" data-icon="gem" data-size="26"></span><h3>Tay nghề nghệ thuật</h3><p>Mỗi chi tiết đều quan trọng. Từng bộ móng được thiết kế riêng theo phong cách và bàn tay của bạn.</p></article>
+          <article class="why-card"><span class="why-ic" data-icon="heart" data-size="26"></span><h3>Chăm sóc thật lòng</h3><p>Bạn được đón tiếp như một vị khách, không phải một lịch hẹn. Tư vấn tận tình trước khi bắt đầu.</p></article>
+          <article class="why-card"><span class="why-ic" data-icon="coffee" data-size="26"></span><h3>Không gian thư thái</h3><p>Không gian yên tĩnh, dụng cụ vô trùng, không vội vàng — để bạn thật sự được nghỉ ngơi.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALLERY -->
+    <section class="section gallery" id="gallery">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Bộ sưu tập</p>
+          <h2 class="section-title">Chọn mẫu nail bạn yêu thích</h2>
+          <p class="section-sub">Lọc theo phong cách hoặc màu sơn, nhấn vào mẫu để xem ảnh lớn và đặt lịch.</p>
+        </div>
+        <div class="filters" id="filters">
+          <div class="filter-row" role="group" aria-label="Lọc theo danh mục" id="cat-filter"></div>
+          <div class="filter-row color-row" role="group" aria-label="Lọc theo màu" id="color-filter"></div>
+        </div>
+        <p class="result-count" id="result-count" aria-live="polite"></p>
+        <div class="design-grid" id="design-grid"></div>
+      </div>
+    </section>
+
+    <!-- 3D TRY-ON -->
+    <section class="section try3d" id="try3d" data-section="show3D">
+      <div class="container try-grid">
+        <div class="try-stage">
+          <canvas id="nail-canvas" aria-label="Mô hình 3D bàn tay với móng được sơn màu đã chọn. Kéo để xoay."></canvas>
+          <p class="try-hint"><span data-icon="hand" data-size="16"></span>Kéo để xoay · cuộn để phóng to</p>
+          <p class="try-fallback" id="try-fallback" hidden>Trình duyệt của bạn chưa hỗ trợ WebGL để hiển thị mô hình 3D.</p>
+        </div>
+        <div class="try-panel">
+          <p class="eyebrow">Thử màu 3D</p>
+          <h2 class="section-title">Phối màu trước khi đến tiệm</h2>
+          <p class="section-sub">Chọn màu sơn, hiệu ứng và dáng móng để xem trước trên mô hình 3D.</p>
+
+          <fieldset class="try-group">
+            <legend>Màu sơn <span class="try-current" id="try-color-name"></span></legend>
+            <div class="swatches" id="try-swatches"></div>
+          </fieldset>
+          <fieldset class="try-group">
+            <legend>Hiệu ứng</legend>
+            <div class="seg" id="try-finish">
+              <button type="button" data-v="gloss" aria-pressed="true">Bóng</button>
+              <button type="button" data-v="matte" aria-pressed="false">Lì</button>
+              <button type="button" data-v="chrome" aria-pressed="false">Tráng gương</button>
+              <button type="button" data-v="cateye" aria-pressed="false">Mắt mèo</button>
+            </div>
+          </fieldset>
+          <fieldset class="try-group">
+            <legend>Dáng móng</legend>
+            <div class="seg" id="try-shape">
+              <button type="button" data-v="almond" aria-pressed="true">Almond</button>
+              <button type="button" data-v="oval" aria-pressed="false">Oval</button>
+              <button type="button" data-v="square" aria-pressed="false">Vuông</button>
+              <button type="button" data-v="coffin" aria-pressed="false">Coffin</button>
+            </div>
+          </fieldset>
+          <label class="switch"><input type="checkbox" id="try-french"><span class="switch-ui" aria-hidden="true"></span>Đầu móng French trắng</label>
+          <div class="try-ctas">
+            <button class="btn btn-primary" id="try-book"><span data-icon="calendar" data-size="18"></span>Đặt lịch với màu này</button>
+            <button class="btn btn-ghost" id="try-consult"><span data-icon="chat" data-size="18"></span>Nhờ tư vấn</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROCESS -->
+    <section class="section process" data-section="showProcess">
+      <div class="container">
+        <div class="section-head center">
+          <p class="eyebrow">Đặt lịch dễ dàng</p>
+          <h2 class="section-title">Chỉ ba bước</h2>
+        </div>
+        <ol class="steps">
+          <li><span class="step-n">1</span><h3>Chọn mẫu & màu</h3><p>Xem bộ sưu tập, thử màu 3D và chọn thiết kế bạn thích.</p></li>
+          <li><span class="step-n">2</span><h3>Chọn giờ phù hợp</h3><p>Điền thông tin hoặc đăng nhập để đặt lịch chỉ với một chạm.</p></li>
+          <li><span class="step-n">3</span><h3>Nhận xác nhận</h3><p>Tiệm liên hệ xác nhận lịch hẹn và tư vấn chi tiết cho bạn.</p></li>
+        </ol>
+        <div class="center"><button class="btn btn-primary btn-lg" data-book>Đặt lịch ngay</button></div>
+      </div>
+    </section>
+
+    <!-- CONTACT -->
+    <section class="section contact" id="contact">
+      <div class="container contact-card">
+        <div>
+          <p class="eyebrow">Liên hệ</p>
+          <h2 class="section-title">Hẹn gặp bạn tại tiệm</h2>
+          <ul class="contact-list">
+            <li data-show="address"><span data-icon="pin"></span><span data-setting="address"></span></li>
+            <li data-show="phone"><span data-icon="phone"></span><a data-href="tel" data-setting="phone"></a></li>
+            <li data-show="hours"><span data-icon="clock"></span><span data-setting="hours"></span></li>
+          </ul>
+          <div class="contact-actions" id="contact-actions"></div>
+        </div>
+        <div class="contact-cta">
+          <h3>Chưa chọn được mẫu?</h3>
+          <p>Gửi yêu cầu, chúng tôi sẽ gọi lại tư vấn mẫu và màu phù hợp với bạn.</p>
+          <button class="btn btn-light" data-consult><span data-icon="chat" data-size="18"></span>Yêu cầu tư vấn</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <p class="footer-brand" data-setting="brandName"></p>
+        <p class="footer-tag" data-setting="tagline"></p>
+      </div>
+      <div class="socials" id="socials"></div>
+    </div>
+    <div class="container footer-bottom">
+      <p>© <span id="year"></span> <span data-setting="brandName"></span>. Bảo lưu mọi quyền.</p>
+    </div>
+  </footer>
+
+  <!-- Sticky mobile CTA -->
+  <div class="mobile-cta"><button class="btn btn-primary btn-block" data-book><span data-icon="calendar" data-size="18"></span>Đặt lịch ngay</button></div>
+
+  <!-- LIGHTBOX -->
+  <dialog class="lightbox" id="lightbox" aria-labelledby="lb-title">
+    <div class="lb-inner">
+      <div class="lb-media">
+        <img id="lb-img" alt="">
+        <button class="lb-nav lb-prev icon-btn" id="lb-prev" aria-label="Mẫu trước" data-icon="left" data-size="22"></button>
+        <button class="lb-nav lb-next icon-btn" id="lb-next" aria-label="Mẫu tiếp theo" data-icon="right" data-size="22"></button>
+        <span class="lb-zoom-hint"><span data-icon="zoom" data-size="14"></span>Nhấn ảnh để phóng to</span>
+      </div>
+      <div class="lb-info">
+        <button class="icon-btn lb-close" data-close aria-label="Đóng" data-icon="x"></button>
+        <p class="eyebrow" id="lb-cat"></p>
+        <h2 id="lb-title"></h2>
+        <p class="lb-price" id="lb-price"></p>
+        <p class="lb-desc" id="lb-desc"></p>
+        <p class="lb-color" id="lb-color"></p>
+        <p class="lb-counter" id="lb-counter"></p>
+        <div class="lb-actions">
+          <button class="btn btn-primary btn-block" id="lb-book"><span data-icon="calendar" data-size="18"></span>Đặt lịch mẫu này</button>
+          <button class="btn btn-ghost btn-block" id="lb-consult"><span data-icon="chat" data-size="18"></span>Tư vấn mẫu này</button>
+        </div>
+        <p class="lb-note" id="lb-note"></p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- BOOKING -->
+  <dialog class="modal" id="booking" aria-labelledby="bk-title">
+    <div class="modal-head">
+      <h2 id="bk-title">Đặt lịch làm nail</h2>
+      <button class="icon-btn" data-close aria-label="Đóng" data-icon="x"></button>
+    </div>
+    <div class="modal-body" id="bk-body">
+      <div class="tabs" role="tablist" aria-label="Loại yêu cầu">
+        <button role="tab" id="tab-booking" aria-selected="true" data-kind="booking">Đặt lịch hẹn</button>
+        <button role="tab" id="tab-consult" aria-selected="false" data-kind="consult">Nhận tư vấn</button>
+      </div>
+      <form id="booking-form" novalidate>
+        <div class="picked" id="bk-picked"></div>
+
+        <div id="bk-account" class="bk-account" hidden></div>
+        <div id="bk-contact">
+          <div class="field">
+            <label for="bk-name">Họ và tên <span class="req" aria-hidden="true">*</span></label>
+            <input id="bk-name" name="name" autocomplete="name" data-rule="name" required>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="bk-phone">Số điện thoại <span class="req" aria-hidden="true">*</span></label>
+              <input id="bk-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0901 234 567" data-rule="phone" required>
+            </div>
+            <div class="field">
+              <label for="bk-email">Email <span class="opt">(không bắt buộc)</span></label>
+              <input id="bk-email" name="email" type="email" autocomplete="email" data-rule="emailOptional">
+            </div>
+          </div>
+        </div>
+
+        <div id="bk-schedule">
+          <div class="field">
+            <label for="bk-service">Dịch vụ <span class="req" aria-hidden="true">*</span></label>
+            <select id="bk-service" name="service_id" data-rule="required" data-msg="Vui lòng chọn dịch vụ." required></select>
+          </div>
+          <div class="field">
+            <label for="bk-date">Ngày hẹn <span class="req" aria-hidden="true">*</span></label>
+            <input id="bk-date" name="date" type="date" data-rule="required" data-msg="Vui lòng chọn ngày hẹn." required>
+          </div>
+          <div class="field">
+            <span class="label" id="bk-time-label">Giờ hẹn <span class="req" aria-hidden="true">*</span></span>
+            <input type="hidden" name="time" id="bk-time" data-rule="required" data-msg="Vui lòng chọn giờ hẹn.">
+            <div class="slots" id="bk-slots" role="radiogroup" aria-labelledby="bk-time-label"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="bk-note">Ghi chú <span class="opt">(không bắt buộc)</span></label>
+          <textarea id="bk-note" name="note" rows="3" maxlength="500" data-rule="note" placeholder="VD: móng yếu, muốn dáng almond ngắn…"></textarea>
+        </div>
+        <div class="form-error" id="bk-error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit" id="bk-submit">Xác nhận đặt lịch</button>
+        <p class="form-foot" id="bk-foot"></p>
+      </form>
+    </div>
+    <div class="modal-body success" id="bk-success" hidden></div>
+  </dialog>
+
+  <!-- AUTH -->
+  <dialog class="modal modal-sm" id="auth" aria-labelledby="auth-title">
+    <div class="modal-head">
+      <h2 id="auth-title">Tài khoản</h2>
+      <button class="icon-btn" data-close aria-label="Đóng" data-icon="x"></button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs" role="tablist" aria-label="Đăng nhập hoặc đăng ký">
+        <button role="tab" aria-selected="true" data-auth="login">Đăng nhập</button>
+        <button role="tab" aria-selected="false" data-auth="register">Đăng ký</button>
+      </div>
+      <form id="login-form" novalidate>
+        <div class="field"><label for="li-email">Email</label><input id="li-email" name="email" type="email" autocomplete="email" data-rule="email" required></div>
+        <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" name="password" type="password" autocomplete="current-password" data-rule="required" required></div>
+        <div class="form-error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" type="submit">Đăng nhập</button>
+      </form>
+      <form id="register-form" novalidate hidden>
+        <div class="field"><label for="rg-name">Họ và tên</label><input id="rg-name" name="name" autocomplete="name" data-rule="name" required></div>
+        <div class="field"><label for="rg-phone">Số điện thoại</label><input id="rg-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" data-rule="phone" required></div>
+        <div class="field"><label for="rg-email">Email</label><input id="rg-email" name="email" type="email" autocomplete="email" data-rule="email" required></div>
+        <div class="field"><label for="rg-pass">Mật khẩu</label><input id="rg-pass" name="password" type="password" autocomplete="new-password" data-rule="password" required><p class="hint">Tối thiểu 8 ký tự, gồm cả chữ và số.</p></div>
+        <div class="form-error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" type="submit">Tạo tài khoản</button>
+        <p class="form-foot">Có tài khoản, lần sau bạn chỉ cần chọn mẫu và nhấn đặt lịch.</p>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MY ACCOUNT -->
+  <dialog class="modal drawer" id="me" aria-labelledby="me-title">
+    <div class="modal-head">
+      <h2 id="me-title">Tài khoản của tôi</h2>
+      <button class="icon-btn" data-close aria-label="Đóng" data-icon="x"></button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-me="bookings">Lịch hẹn</button>
+        <button role="tab" aria-selected="false" data-me="profile">Thông tin</button>
+      </div>
+      <div id="me-bookings"></div>
+      <form id="profile-form" novalidate hidden>
+        <div class="field"><label for="pf-name">Họ và tên</label><input id="pf-name" name="name" autocomplete="name" data-rule="name"></div>
+        <div class="field"><label for="pf-phone">Số điện thoại</label><input id="pf-phone" name="phone" type="tel" autocomplete="tel" data-rule="phone"></div>
+        <div class="field"><label for="pf-email">Email</label><input id="pf-email" type="email" disabled></div>
+        <details class="pw-details"><summary>Đổi mật khẩu</summary>
+          <div class="field"><label for="pf-cur">Mật khẩu hiện tại</label><input id="pf-cur" name="currentPassword" type="password" autocomplete="current-password"></div>
+          <div class="field"><label for="pf-new">Mật khẩu mới</label><input id="pf-new" name="newPassword" type="password" autocomplete="new-password"></div>
+        </details>
+        <div class="form-error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" type="submit">Lưu thay đổi</button>
+      </form>
+    </div>
+  </dialog>
+
+  <script type="module" src="/js/site.js"></script>
+</body>
+</html>
