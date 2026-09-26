@@ -17,7 +17,8 @@ const images = require('./src/images');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const SESSION_DAYS = 14;
+const REMEMBER_DAYS = 30; // "Ghi nhớ đăng nhập"
+const SHORT_SESSION_HOURS = 12; // not remembered: cookie ends with the browser, server copy after 12h
 const LEGACY_UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -57,8 +58,20 @@ const loadUser = h(async (req, res, next) => {
     if (hit && hit.until > Date.now()) {
       req.user = hit.user;
     } else {
-      req.user = await one(`SELECT u.id, u.email, u.full_name AS name, u.phone, u.role
+      const row = await one(`SELECT u.id, u.email, u.full_name AS name, u.phone, u.role, s.remember,
+          s.expires_at < now() + interval '15 days' AS renew
         FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = @sid AND s.expires_at > now()`, { sid });
+      if (row) {
+        const { remember, renew, ...user } = row;
+        req.user = user;
+        // A remembered login keeps renewing while it is used, so regular customers stay signed in.
+        if (remember && renew) {
+          await query('UPDATE sessions SET expires_at = now() + make_interval(days => @days) WHERE token = @sid', { sid, days: REMEMBER_DAYS });
+          res.setHeader('Set-Cookie', sessionCookie(sid, true));
+        }
+      } else {
+        req.user = null;
+      }
       if (sessionCache.size > 1000) sessionCache.clear();
       sessionCache.set(sid, { user: req.user, until: Date.now() + SESSION_CACHE_MS });
     }
@@ -67,13 +80,18 @@ const loadUser = h(async (req, res, next) => {
 });
 app.use(['/api', '/admin'], loadUser);
 
-async function setSession(res, userId) {
-  const token = newToken();
-  const maxAge = SESSION_DAYS * 86400;
-  await query('INSERT INTO sessions (token, user_id, expires_at) VALUES (@token, @userId, now() + make_interval(days => @days))',
-    { token, userId, days: SESSION_DAYS });
+function sessionCookie(token, remember) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`);
+  const maxAge = remember ? `; Max-Age=${REMEMBER_DAYS * 86400}` : ''; // no Max-Age = cleared when the browser closes
+  return `sid=${token}; HttpOnly; Path=/; SameSite=Lax${maxAge}${secure}`;
+}
+
+async function setSession(res, userId, remember = true) {
+  const token = newToken();
+  await query(`INSERT INTO sessions (token, user_id, expires_at, remember)
+    VALUES (@token, @userId, now() + CASE WHEN @remember THEN make_interval(days => @days) ELSE make_interval(hours => @hours) END, @remember)`,
+  { token, userId, remember, days: REMEMBER_DAYS, hours: SHORT_SESSION_HOURS });
+  res.setHeader('Set-Cookie', sessionCookie(token, remember));
 }
 
 const requireAuth = (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Vui lòng đăng nhập.' }));
@@ -165,7 +183,7 @@ app.post('/api/auth/login', authLimiter, h(async (req, res) => {
   const u = await one('SELECT id, password_hash FROM users WHERE email = @email', { email });
   if (!u || !verifyPassword(String(req.body.password || ''), u.password_hash))
     return res.status(401).json({ error: 'Email hoặc mật khẩu không đúng.' });
-  await setSession(res, u.id);
+  await setSession(res, u.id, ['on', 'true', '1', true, 1].includes(req.body.remember));
   res.json({ user: await getUser(u.id) });
 }));
 

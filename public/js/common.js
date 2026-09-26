@@ -78,6 +78,7 @@ const P = {
   pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
@@ -95,6 +96,41 @@ export function hydrateIcons(root = document) {
   for (const el of root.querySelectorAll('[data-icon]')) {
     el.insertAdjacentHTML('afterbegin', icon(el.dataset.icon, Number(el.dataset.size) || 20));
     el.removeAttribute('data-icon');
+  }
+}
+
+// ---------- show / hide password ----------
+function setPasswordVisible(input, btn, show) {
+  input.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-pressed', String(show));
+  btn.setAttribute('aria-label', show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu');
+  btn.innerHTML = icon(show ? 'eyeOff' : 'eye', 18);
+}
+// Adds an eye button to every password field under `root` (idempotent).
+export function enhancePasswordFields(root = document) {
+  for (const input of root.querySelectorAll('input[type=password]:not([data-pw])')) {
+    input.dataset.pw = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'pw-wrap';
+    input.before(wrap);
+    wrap.append(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-toggle';
+    if (input.id) btn.setAttribute('aria-controls', input.id);
+    setPasswordVisible(input, btn, false);
+    btn.addEventListener('click', () => {
+      setPasswordVisible(input, btn, input.type === 'password');
+      input.focus({ preventScroll: true });
+    });
+    wrap.append(btn);
+    input.form?.addEventListener('reset', () => setPasswordVisible(input, btn, false));
+  }
+}
+// Hide any revealed password again (e.g. when its dialog closes).
+export function hidePasswords(root = document) {
+  for (const btn of root.querySelectorAll('.pw-toggle[aria-pressed="true"]')) {
+    setPasswordVisible(btn.parentElement.querySelector('input'), btn, false);
   }
 }
 
