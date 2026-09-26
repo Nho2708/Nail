@@ -48,6 +48,16 @@ function renderSideBrand() {
   logo.hidden = !settings.logoImage;
   $('#side-mark').hidden = !!settings.logoImage;
   if (settings.logoImage) logo.src = settings.logoImage;
+  // Browser tab: brand logo as favicon, brand name in the title.
+  const fav = $('#favicon');
+  fav.dataset.default ||= fav.href;
+  fav.href = settings.logoIcon || settings.logoImage || fav.dataset.default;
+  setTitle();
+}
+
+function setTitle() {
+  const key = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'dashboard';
+  document.title = `${VIEWS[key].title} · ${settings.brandName || 'Quản trị'}`;
 }
 
 function wireShell() {
@@ -79,7 +89,7 @@ function route() {
     if (a.dataset.view === key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   $('#view-title').textContent = VIEWS[key].title;
-  document.title = `${VIEWS[key].title} — Quản trị`;
+  setTitle();
   charts.forEach((c) => c.destroy());
   charts = [];
   view.innerHTML = '<div class="skeleton" style="height:240px"></div>';

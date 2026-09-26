@@ -332,17 +332,40 @@ const upload = multer({
   fileFilter: (req, file, cb) => cb(null, /^image\/(jpeg|png|webp|avif)$/.test(file.mimetype)),
 });
 
+// Favicon: the logo on a rounded tile whose shade contrasts with the logo,
+// so it stays visible on both light and dark browser tab bars.
+async function makeFavicon(logo, out) {
+  const S = 64, PAD = 7;
+  const mark = await logo.clone().resize(S - PAD * 2, S - PAD * 2, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let lum = 0, weight = 0;
+  for (let i = 0; i < mark.data.length; i += 4) {
+    const a = mark.data[i + 3] / 255;
+    lum += a * (0.2126 * mark.data[i] + 0.7152 * mark.data[i + 1] + 0.0722 * mark.data[i + 2]) / 255;
+    weight += a;
+  }
+  const tile = weight && lum / weight < 0.55 ? '#FBF7F4' : '#2E1A24';
+  const bg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" rx="14" fill="${tile}"/></svg>`);
+  await sharp(bg)
+    .composite([{ input: mark.data, raw: { width: mark.info.width, height: mark.info.height, channels: 4 }, left: PAD, top: PAD }])
+    .png().toFile(out);
+}
+
 admin.post('/upload', upload.single('image'), h(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Chỉ nhận ảnh JPG, PNG, WEBP, AVIF tối đa 8MB.' });
   const base = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   try {
     const img = sharp(req.file.buffer, { failOn: 'error' }).rotate();
     if (req.query.kind === 'logo') {
-      // Logo keeps transparency; a square PNG icon is derived for the browser tab.
-      await img.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 })
+      // Logo keeps transparency; empty margins are trimmed so the mark fills its height.
+      // A square PNG icon is derived for the browser tab.
+      let logo = img;
+      try {
+        logo = sharp(await img.clone().trim({ threshold: 10 }).png().toBuffer());
+      } catch { /* uniform image: nothing to trim */ }
+      await logo.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 })
         .toFile(path.join(UPLOAD_DIR, `${base}.webp`));
-      await img.clone().resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png()
-        .toFile(path.join(UPLOAD_DIR, `${base}-icon.png`));
+      await makeFavicon(logo, path.join(UPLOAD_DIR, `${base}-icon.png`));
       return res.json({ url: `/uploads/${base}.webp`, thumb: `/uploads/${base}.webp`, icon: `/uploads/${base}-icon.png` });
     }
     await img.clone().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 })
