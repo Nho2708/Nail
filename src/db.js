@@ -1,62 +1,68 @@
-// SQL Server 2019 access layer (driver: mssql/tedious).
-const sql = require('mssql');
+// PostgreSQL access layer (driver: pg). Works with Neon, Supabase, Render/Railway Postgres or a local server.
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { Pool, types } = require('pg');
 const { hashPassword } = require('./security');
 
-// DB_SERVER accepts "HOST" or "HOST\INSTANCE" (e.g. QUANG-NHO\PRN222).
-// With an instance name and no DB_PORT, the port is resolved through SQL Server Browser.
-const [host, instance] = (process.env.DB_SERVER || 'localhost').split('\\');
-const instanceName = process.env.DB_INSTANCE || instance;
-const port = Number(process.env.DB_PORT) || (instanceName ? undefined : 1433);
+types.setTypeParser(20, (v) => parseInt(v, 10)); // COUNT(*) / bigint → number (values here are small)
+types.setTypeParser(1082, (v) => v);             // DATE → 'YYYY-MM-DD' string, no timezone shifting
 
-const config = {
-  server: host,
-  ...(port ? { port } : {}),
-  database: process.env.DB_NAME || 'NailStudio',
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-  options: {
-    ...(!port && instanceName ? { instanceName } : {}),
-    encrypt: process.env.DB_ENCRYPT === 'true',
-    trustServerCertificate: true,
-    useUTC: false,
-  },
-};
+// Local wall-clock zone of the salon; used for "today" and per-day statistics.
+const APP_TZ = /^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(process.env.TZ || '') ? process.env.TZ : 'Asia/Ho_Chi_Minh';
 
-let pool;
-async function connect() {
-  pool = await new sql.ConnectionPool(config).connect();
-  return pool;
+if (!process.env.DATABASE_URL) {
+  console.error('Thiếu biến môi trường DATABASE_URL (chuỗi kết nối PostgreSQL). Xem file .env.example.');
+  process.exit(1);
 }
 
-// query(`SELECT ... WHERE Id = @id`, { id: 5 }) -> rows
-async function query(text, params = {}, tx) {
-  const req = (tx || pool).request();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === null || v === undefined) req.input(k, sql.NVarChar, null);
-    else if (typeof v === 'number' && Number.isInteger(v)) req.input(k, sql.Int, v);
-    else if (typeof v === 'boolean') req.input(k, sql.Bit, v);
-    else req.input(k, sql.NVarChar, String(v));
-  }
-  const r = await req.query(text);
-  return r.recordset || [];
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 5,
+  // Close idle connections quickly so a serverless database (Neon) can scale to zero.
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 20_000, // first query after the DB slept may take a moment
+});
+pool.on('error', (e) => console.warn('[db] idle client error:', e.message));
+
+// query(`SELECT … WHERE id = @id`, { id: 5 }) → rows. Named @params are turned into $1, $2 …
+function toPositional(text, params = {}) {
+  const values = [];
+  const index = {};
+  const sql = text.replace(/@([A-Za-z_]\w*)/g, (_, name) => {
+    if (!(name in params)) throw new Error(`Missing SQL parameter @${name}`);
+    if (!(name in index)) {
+      values.push(params[name] === undefined ? null : params[name]);
+      index[name] = values.length;
+    }
+    return `$${index[name]}`;
+  });
+  return { sql, values };
 }
-const one = async (text, params, tx) => (await query(text, params, tx))[0];
+
+async function query(text, params, client) {
+  const { sql, values } = toPositional(text, params);
+  const r = await (client || pool).query(sql, values);
+  return r.rows;
+}
+const one = async (text, params, client) => (await query(text, params, client))[0];
 
 async function transaction(fn) {
-  const tx = new sql.Transaction(pool);
-  await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+  const client = await pool.connect();
   try {
-    const out = await fn(tx);
-    await tx.commit();
+    await client.query('BEGIN');
+    const out = await fn(client);
+    await client.query('COMMIT');
     return out;
   } catch (e) {
-    await tx.rollback().catch(() => {});
+    await client.query('ROLLBACK').catch(() => {});
     throw e;
+  } finally {
+    client.release();
   }
 }
 
-// ---------- settings (defaults live in code, overrides in dbo.Settings) ----------
+// ---------- settings (defaults live in code, overrides in the settings table; cached in memory) ----------
 const DEFAULT_SETTINGS = {
   brandName: 'Lumière Nail Studio',
   logoImage: '',
@@ -107,13 +113,18 @@ const DEFAULT_SETTINGS = {
 };
 const PRIVATE_KEYS = Object.keys(DEFAULT_SETTINGS).filter((k) => k.startsWith('notify'));
 
+let settingsCache = null;
 async function getSettings({ includePrivate = false } = {}) {
-  const rows = await query('SELECT SettingKey, SettingValue FROM dbo.Settings');
-  const out = { ...DEFAULT_SETTINGS };
-  for (const r of rows) {
-    if (!(r.SettingKey in DEFAULT_SETTINGS)) continue;
-    try { out[r.SettingKey] = JSON.parse(r.SettingValue); } catch { out[r.SettingKey] = r.SettingValue; }
+  if (!settingsCache) {
+    const rows = await query('SELECT setting_key, setting_value FROM settings');
+    const out = { ...DEFAULT_SETTINGS };
+    for (const r of rows) {
+      if (!(r.setting_key in DEFAULT_SETTINGS)) continue;
+      try { out[r.setting_key] = JSON.parse(r.setting_value); } catch { out[r.setting_key] = r.setting_value; }
+    }
+    settingsCache = out;
   }
+  const out = { ...settingsCache };
   if (!includePrivate) for (const k of PRIVATE_KEYS) delete out[k];
   return out;
 }
@@ -123,26 +134,31 @@ async function saveSettings(patch) {
     if (!(k in DEFAULT_SETTINGS)) continue;
     const def = DEFAULT_SETTINGS[k];
     const val = typeof def === 'boolean' ? (v === true || v === 'true' || v === 1 || v === '1') : String(v ?? '').slice(0, 1500);
-    await query(`UPDATE dbo.Settings SET SettingValue = @v WHERE SettingKey = @k;
-      IF @@ROWCOUNT = 0 INSERT INTO dbo.Settings(SettingKey, SettingValue) VALUES (@k, @v);`, { k, v: JSON.stringify(val) });
+    await query(`INSERT INTO settings (setting_key, setting_value) VALUES (@k, @v)
+      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`, { k, v: JSON.stringify(val) });
   }
+  settingsCache = null;
 }
 
-// Bootstrap only the first admin account (credentials from .env). No sample data.
+// Bootstrap only the first admin account. No sample data.
 async function ensureAdmin() {
-  const hasAdmin = await one("SELECT TOP 1 Id FROM dbo.Users WHERE Role = 'admin'");
-  if (hasAdmin) return;
+  if (await one("SELECT id FROM users WHERE role = 'admin' LIMIT 1")) return;
   const email = (process.env.ADMIN_EMAIL || 'admin@nail.local').toLowerCase();
-  const pass = process.env.ADMIN_PASSWORD || 'Admin@123';
-  await query(`INSERT INTO dbo.Users(Email, PasswordHash, FullName, Role) VALUES (@email, @hash, N'Quản trị viên', 'admin')`,
+  let pass = process.env.ADMIN_PASSWORD;
+  if (!pass) {
+    // Never ship a guessable default: generate one and show it once in the logs.
+    pass = 'Nail@' + crypto.randomBytes(6).toString('base64url') + '7';
+    console.log(`[setup] Mật khẩu admin được tạo ngẫu nhiên: ${pass}`);
+  }
+  await query(`INSERT INTO users (email, password_hash, full_name, role) VALUES (@email, @hash, 'Quản trị viên', 'admin')`,
     { email, hash: hashPassword(pass) });
-  console.log(`[setup] Đã tạo tài khoản admin: ${email} (mật khẩu trong .env — hãy đổi sau khi đăng nhập)`);
+  console.log(`[setup] Đã tạo tài khoản admin: ${email} — hãy đổi mật khẩu sau khi đăng nhập.`);
 }
 
 async function init() {
-  await connect();
+  await pool.query(fs.readFileSync(path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8'));
   await ensureAdmin();
-  await query('DELETE FROM dbo.Sessions WHERE ExpiresAt < SYSDATETIME()');
+  await query('DELETE FROM sessions WHERE expires_at < now()');
 }
 
-module.exports = { sql, init, query, one, transaction, getSettings, saveSettings, DEFAULT_SETTINGS, PRIVATE_KEYS };
+module.exports = { pool, init, query, one, transaction, getSettings, saveSettings, DEFAULT_SETTINGS, PRIVATE_KEYS, APP_TZ };

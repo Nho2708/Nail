@@ -38,7 +38,9 @@ async function boot() {
   window.addEventListener('hashchange', route);
   route();
   pollBookings(true);
-  setInterval(pollBookings, 20000);
+  // Poll only while the tab is visible: every request wakes the (serverless) database.
+  setInterval(() => { if (!document.hidden) pollBookings(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollBookings(); });
   wireShell();
 }
 
@@ -748,7 +750,7 @@ async function renderNotify() {
       <button type="button" class="btn btn-ghost btn-sm" data-test="${key}">${icon('send', 16)}Gửi tin thử</button><span class="test-result" data-result="${key}" role="status"></span>
     </section>`;
   view.innerHTML = `
-    <div class="help">${icon('info', 16)} Mỗi khi khách đặt lịch hoặc yêu cầu tư vấn, hệ thống sẽ gửi tin nhắn đến <strong>tất cả kênh đã cấu hình</strong>. Ngoài ra trang quản trị tự kiểm tra lịch mới mỗi 20 giây và hiện thông báo (bấm biểu tượng chuông ở góc trên để bật thông báo trình duyệt).</div>
+    <div class="help">${icon('info', 16)} Mỗi khi khách đặt lịch hoặc yêu cầu tư vấn, hệ thống sẽ gửi tin nhắn đến <strong>tất cả kênh đã cấu hình</strong>. Ngoài ra trang quản trị tự kiểm tra lịch mới mỗi phút (khi tab đang mở) và hiện thông báo (bấm biểu tượng chuông ở góc trên để bật thông báo trình duyệt).</div>
     <form id="nt-form" novalidate>
       ${channel('zalo', 'Zalo Official Account', on('notifyZaloOaToken', 'notifyZaloUserId'),
         `<ol><li>Tạo Zalo OA tại <strong>oa.zalo.me</strong> và ứng dụng tại <strong>developers.zalo.me</strong>, liên kết OA với ứng dụng.</li>

@@ -1,23 +1,24 @@
-try { process.loadEnvFile(); } catch { /* .env is optional when env vars are set externally */ }
+try { process.loadEnvFile(); } catch { /* .env is optional when env vars are set by the host */ }
+process.env.TZ ||= 'Asia/Ho_Chi_Minh'; // "today", opening hours and daily stats follow the salon's clock
 
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 const multer = require('multer');
 const sharp = require('sharp');
 
 const db = require('./src/db');
-const { query, one, getSettings, saveSettings } = db;
+const { query, one, getSettings, saveSettings, APP_TZ } = db;
 const { hashPassword, verifyPassword, newToken, rateLimit } = require('./src/security');
 const { validateBooking, validateRegister, clean, normPhone, PHONE_RE } = require('./src/validate');
 const { notifyAdmin } = require('./src/notify');
+const analytics = require('./src/analytics');
+const images = require('./src/images');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const SESSION_DAYS = 14;
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const LEGACY_UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -31,6 +32,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Uptime monitors ping this; it must not touch the database so the DB can sleep.
+app.get('/healthz', (req, res) => res.type('text').send('ok'));
+
 // ---------------- session ----------------
 function parseCookies(header = '') {
   const out = {};
@@ -41,11 +45,23 @@ function parseCookies(header = '') {
   return out;
 }
 
+// Short-lived cache so a logged-in user browsing does not hit the DB on every request.
+const sessionCache = new Map();
+const SESSION_CACHE_MS = 60_000;
+const forgetSessions = () => sessionCache.clear();
+
 const loadUser = h(async (req, res, next) => {
   const sid = parseCookies(req.headers.cookie).sid;
   if (sid && /^[a-f0-9]{64}$/.test(sid)) {
-    req.user = await one(`SELECT u.Id AS id, u.Email AS email, u.FullName AS name, u.Phone AS phone, u.Role AS role
-      FROM dbo.Sessions s JOIN dbo.Users u ON u.Id = s.UserId WHERE s.Token = @sid AND s.ExpiresAt > SYSDATETIME()`, { sid });
+    const hit = sessionCache.get(sid);
+    if (hit && hit.until > Date.now()) {
+      req.user = hit.user;
+    } else {
+      req.user = await one(`SELECT u.id, u.email, u.full_name AS name, u.phone, u.role
+        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = @sid AND s.expires_at > now()`, { sid });
+      if (sessionCache.size > 1000) sessionCache.clear();
+      sessionCache.set(sid, { user: req.user, until: Date.now() + SESSION_CACHE_MS });
+    }
   }
   next();
 });
@@ -54,7 +70,7 @@ app.use(['/api', '/admin'], loadUser);
 async function setSession(res, userId) {
   const token = newToken();
   const maxAge = SESSION_DAYS * 86400;
-  await query('INSERT INTO dbo.Sessions(Token, UserId, ExpiresAt) VALUES (@token, @userId, DATEADD(day, @days, SYSDATETIME()))',
+  await query('INSERT INTO sessions (token, user_id, expires_at) VALUES (@token, @userId, now() + make_interval(days => @days))',
     { token, userId, days: SESSION_DAYS });
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`);
@@ -75,28 +91,32 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-const USER_COLS = 'Id AS id, Email AS email, FullName AS name, Phone AS phone, Role AS role';
-const getUser = (id) => one(`SELECT ${USER_COLS} FROM dbo.Users WHERE Id = @id`, { id });
+const getUser = (id) => one('SELECT id, email, full_name AS name, phone, role FROM users WHERE id = @id', { id });
 
 // ---------------- public API ----------------
 app.get('/api/settings', h(async (req, res) => res.json(await getSettings())));
 
-const DESIGN_COLS = `d.Id AS id, d.Title AS title, d.Description AS description, d.ImageUrl AS image,
-  COALESCE(d.ThumbUrl, d.ImageUrl) AS thumb, d.CategoryId AS category_id, d.ColorId AS color_id,
-  d.Price AS price, d.IsFeatured AS featured, d.IsActive AS active, d.Views AS views`;
+const DESIGN_COLS = `d.id, d.title, d.description, d.image_url AS image, COALESCE(d.thumb_url, d.image_url) AS thumb,
+  d.category_id, d.color_id, d.price, d.is_featured AS featured, d.is_active AS active, d.views`;
 
+// The public catalogue changes only when an admin edits it, so it is cached until then.
+let catalogCache = null;
+const invalidateCatalog = () => { catalogCache = null; };
 app.get('/api/catalog', h(async (req, res) => {
-  const [categories, colors, services, designs] = await Promise.all([
-    query('SELECT Id AS id, Name AS name, SortOrder AS sort FROM dbo.Categories ORDER BY SortOrder, Id'),
-    query('SELECT Id AS id, Name AS name, Hex AS hex, Finish AS finish, SortOrder AS sort FROM dbo.Colors ORDER BY SortOrder, Id'),
-    query(`SELECT Id AS id, Name AS name, Description AS description, PriceFrom AS price_from, DurationMin AS duration,
-      ImageUrl AS image FROM dbo.Services WHERE IsActive = 1 ORDER BY SortOrder, Id`),
-    query(`SELECT ${DESIGN_COLS} FROM dbo.Designs d WHERE d.IsActive = 1 ORDER BY d.IsFeatured DESC, d.Id DESC`),
-  ]);
-  res.json({ categories, colors, services, designs });
+  if (!catalogCache) {
+    const [categories, colors, services, designs] = await Promise.all([
+      query('SELECT id, name, sort_order AS sort FROM categories ORDER BY sort_order, id'),
+      query('SELECT id, name, hex, finish, sort_order AS sort FROM colors ORDER BY sort_order, id'),
+      query(`SELECT id, name, description, price_from, duration_min AS duration, image_url AS image
+        FROM services WHERE is_active ORDER BY sort_order, id`),
+      query(`SELECT ${DESIGN_COLS} FROM designs d WHERE d.is_active ORDER BY d.is_featured DESC, d.id DESC`),
+    ]);
+    catalogCache = { categories, colors, services, designs };
+  }
+  res.json(catalogCache);
 }));
 
-app.post('/api/track', rateLimit({ windowMs: 60_000, max: 60 }), h(async (req, res) => {
+app.post('/api/track', rateLimit({ windowMs: 60_000, max: 60 }), (req, res) => {
   if (req.user?.role === 'admin') return res.json({ ok: true }); // don't count the owner
   const visitor = clean(req.body.visitor).replace(/[^\w-]/g, '').slice(0, 64) || 'anon';
   const p = clean(req.body.path).slice(0, 200) || '/';
@@ -107,11 +127,19 @@ app.post('/api/track', rateLimit({ windowMs: 60_000, max: 60 }), h(async (req, r
     const u = new URL(clean(req.body.referrer));
     if (u.host !== req.headers.host) ref = u.hostname;
   } catch { /* no/invalid referrer */ }
-  await query('INSERT INTO dbo.Visits(VisitorId, Path, Referrer, Device) VALUES (@visitor, @p, @ref, @device)',
-    { visitor, p, ref: ref || null, device });
+  analytics.recordVisit({ visitor, path: p, referrer: ref, device });
   const designId = Number(req.body.designId);
-  if (Number.isInteger(designId) && designId > 0) await query('UPDATE dbo.Designs SET Views = Views + 1 WHERE Id = @designId', { designId });
+  if (Number.isInteger(designId) && designId > 0) analytics.recordDesignView(designId);
   res.json({ ok: true });
+});
+
+app.get('/img/:id', h(async (req, res) => {
+  if (!/^[a-f0-9]{24}\.(webp|png)$/.test(req.params.id)) return res.status(404).end();
+  const img = await images.getImage(req.params.id);
+  if (!img) return res.status(404).end();
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('ETag', `"${req.params.id}"`);
+  res.type(img.type).send(img.data);
 }));
 
 // ---------------- auth API ----------------
@@ -122,26 +150,29 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.user || null }));
 app.post('/api/auth/register', authLimiter, h(async (req, res) => {
   const { data, errors, ok } = validateRegister(req.body);
   if (!ok) return res.status(422).json({ error: 'Thông tin chưa hợp lệ.', fields: errors });
-  if (await one('SELECT Id FROM dbo.Users WHERE Email = @email', { email: data.email }))
+  if (await one('SELECT id FROM users WHERE email = @email', { email: data.email }))
     return res.status(409).json({ error: 'Email đã được sử dụng.', fields: { email: 'Email này đã được đăng ký.' } });
-  const r = await one(`INSERT INTO dbo.Users(Email, PasswordHash, FullName, Phone) OUTPUT INSERTED.Id AS id
-    VALUES (@email, @hash, @name, @phone)`, { email: data.email, hash: hashPassword(data.password), name: data.name, phone: data.phone });
+  const r = await one(`INSERT INTO users (email, password_hash, full_name, phone) VALUES (@email, @hash, @name, @phone) RETURNING id`,
+    { email: data.email, hash: hashPassword(data.password), name: data.name, phone: data.phone });
   await setSession(res, r.id);
   res.status(201).json({ user: await getUser(r.id) });
 }));
 
 app.post('/api/auth/login', authLimiter, h(async (req, res) => {
   const email = clean(req.body.email).toLowerCase();
-  const u = await one('SELECT Id, PasswordHash FROM dbo.Users WHERE Email = @email', { email });
-  if (!u || !verifyPassword(String(req.body.password || ''), u.PasswordHash))
+  const u = await one('SELECT id, password_hash FROM users WHERE email = @email', { email });
+  if (!u || !verifyPassword(String(req.body.password || ''), u.password_hash))
     return res.status(401).json({ error: 'Email hoặc mật khẩu không đúng.' });
-  await setSession(res, u.Id);
-  res.json({ user: await getUser(u.Id) });
+  await setSession(res, u.id);
+  res.json({ user: await getUser(u.id) });
 }));
 
 app.post('/api/auth/logout', h(async (req, res) => {
   const sid = parseCookies(req.headers.cookie).sid;
-  if (sid) await query('DELETE FROM dbo.Sessions WHERE Token = @sid', { sid });
+  if (sid) {
+    sessionCache.delete(sid);
+    await query('DELETE FROM sessions WHERE token = @sid', { sid });
+  }
   res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
 }));
@@ -153,29 +184,30 @@ app.put('/api/auth/profile', requireAuth, h(async (req, res) => {
   if (name.length < 2 || name.length > 60) fields.name = 'Họ tên phải từ 2 đến 60 ký tự.';
   if (phone && !PHONE_RE.test(phone)) fields.phone = 'Số điện thoại không hợp lệ.';
   if (req.body.newPassword) {
-    const u = await one('SELECT PasswordHash FROM dbo.Users WHERE Id = @id', { id: req.user.id });
-    if (!verifyPassword(String(req.body.currentPassword || ''), u.PasswordHash)) fields.currentPassword = 'Mật khẩu hiện tại không đúng.';
+    const u = await one('SELECT password_hash FROM users WHERE id = @id', { id: req.user.id });
+    if (!verifyPassword(String(req.body.currentPassword || ''), u.password_hash)) fields.currentPassword = 'Mật khẩu hiện tại không đúng.';
     const np = String(req.body.newPassword);
     if (np.length < 8 || !/[A-Za-z]/.test(np) || !/\d/.test(np)) fields.newPassword = 'Tối thiểu 8 ký tự, gồm cả chữ và số.';
   }
   if (Object.keys(fields).length) return res.status(422).json({ error: 'Thông tin chưa hợp lệ.', fields });
-  await query('UPDATE dbo.Users SET FullName = @name, Phone = @phone WHERE Id = @id', { name, phone: phone || null, id: req.user.id });
+  await query('UPDATE users SET full_name = @name, phone = @phone WHERE id = @id', { name, phone: phone || null, id: req.user.id });
   if (req.body.newPassword) {
-    await query('UPDATE dbo.Users SET PasswordHash = @hash WHERE Id = @id', { hash: hashPassword(String(req.body.newPassword)), id: req.user.id });
+    await query('UPDATE users SET password_hash = @hash WHERE id = @id', { hash: hashPassword(String(req.body.newPassword)), id: req.user.id });
   }
+  forgetSessions();
   res.json({ user: await getUser(req.user.id) });
 }));
 
 // ---------------- bookings ----------------
-const BOOKING_SELECT = `SELECT b.Id AS id, b.Kind AS type, b.UserId AS user_id, b.FullName AS name, b.Phone AS phone, b.Email AS email,
-  CONVERT(char(10), b.BookingDate, 23) AS date, b.BookingTime AS time, b.ServiceId AS service_id, b.DesignId AS design_id,
-  b.ColorId AS color_id, b.CustomColor AS custom_color, b.Note AS note, b.Status AS status, b.NotifyResult AS notified,
-  b.CreatedAt AS created_at, s.Name AS service_name, d.Title AS design_title, COALESCE(d.ThumbUrl, d.ImageUrl) AS design_thumb,
-  c.Name AS color_name, c.Hex AS color_hex
-  FROM dbo.Bookings b
-  LEFT JOIN dbo.Services s ON s.Id = b.ServiceId
-  LEFT JOIN dbo.Designs d ON d.Id = b.DesignId
-  LEFT JOIN dbo.Colors c ON c.Id = b.ColorId`;
+const BOOKING_SELECT = `SELECT b.id, b.kind AS type, b.user_id, b.full_name AS name, b.phone, b.email,
+  to_char(b.booking_date, 'YYYY-MM-DD') AS date, b.booking_time AS time, b.service_id, b.design_id,
+  b.color_id, b.custom_color, b.note, b.status, b.notify_result AS notified, b.created_at,
+  s.name AS service_name, d.title AS design_title, COALESCE(d.thumb_url, d.image_url) AS design_thumb,
+  c.name AS color_name, c.hex AS color_hex
+  FROM bookings b
+  LEFT JOIN services s ON s.id = b.service_id
+  LEFT JOIN designs d ON d.id = b.design_id
+  LEFT JOIN colors c ON c.id = b.color_id`;
 
 const bookingLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, message: 'Bạn đã gửi quá nhiều yêu cầu, vui lòng thử lại sau.' });
 
@@ -188,11 +220,11 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
     body.email = clean(body.email) || req.user.email;
   }
   const s = await getSettings();
-  const requireService = !!(await one('SELECT TOP 1 Id FROM dbo.Services WHERE IsActive = 1'));
+  const requireService = !!(await one('SELECT id FROM services WHERE is_active LIMIT 1'));
   const { data, errors } = validateBooking(body, { openTime: s.openTime, closeTime: s.closeTime, requireService });
-  const refs = [['service_id', 'Services'], ['design_id', 'Designs'], ['color_id', 'Colors']];
+  const refs = [['service_id', 'services'], ['design_id', 'designs'], ['color_id', 'colors']];
   for (const [k, table] of refs) {
-    if (data[k] && !(await one(`SELECT Id FROM dbo.${table} WHERE Id = @id`, { id: data[k] }))) errors[k] = 'Lựa chọn không còn tồn tại.';
+    if (data[k] && !(await one(`SELECT id FROM ${table} WHERE id = @id`, { id: data[k] }))) errors[k] = 'Lựa chọn không còn tồn tại.';
   }
   if (Object.keys(errors).length) return res.status(422).json({ error: 'Vui lòng kiểm tra lại thông tin.', fields: errors });
 
@@ -200,38 +232,39 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
   const params = {
     kind: data.type, userId: req.user?.id ?? null, name: data.name, phone: data.phone, email: data.email || null,
     date: data.date, time: data.time, serviceId: data.service_id, designId: data.design_id, colorId: data.color_id,
-    customColor: data.custom_color, note: data.note || null, capacity,
+    customColor: data.custom_color, note: data.note || null,
   };
-  // Capacity check + insert in one serializable transaction so two customers can't overbook a slot.
+  // A per-slot advisory lock makes "count, then insert" atomic, so two customers can't overbook a slot.
   const created = await db.transaction(async (tx) => {
     if (data.type === 'booking') {
-      const taken = await one(`SELECT COUNT(*) AS n FROM dbo.Bookings WITH (UPDLOCK, HOLDLOCK)
-        WHERE BookingDate = @date AND BookingTime = @time AND Status IN ('pending','confirmed')`, params, tx);
+      await query("SELECT pg_advisory_xact_lock(hashtext(@date::text || ' ' || @time::text))", params, tx);
+      const taken = await one(`SELECT COUNT(*) AS n FROM bookings
+        WHERE booking_date = @date::date AND booking_time = @time AND status IN ('pending', 'confirmed')`, params, tx);
       if (taken.n >= capacity) return null;
     }
-    return one(`INSERT INTO dbo.Bookings(Kind, UserId, FullName, Phone, Email, BookingDate, BookingTime, ServiceId, DesignId, ColorId, CustomColor, Note)
-      OUTPUT INSERTED.Id AS id
-      VALUES (@kind, @userId, @name, @phone, @email, @date, @time, @serviceId, @designId, @colorId, @customColor, @note)`, params, tx);
+    return one(`INSERT INTO bookings (kind, user_id, full_name, phone, email, booking_date, booking_time, service_id, design_id, color_id, custom_color, note)
+      VALUES (@kind, @userId, @name, @phone, @email, @date::date, @time, @serviceId, @designId, @colorId, @customColor, @note)
+      RETURNING id`, params, tx);
   });
   if (!created) return res.status(409).json({ error: 'Khung giờ này vừa kín lịch, vui lòng chọn giờ khác.', fields: { time: 'Khung giờ đã kín.' } });
 
-  const booking = await one(`${BOOKING_SELECT} WHERE b.Id = @id`, { id: created.id });
-  // Notify admin in the background; the result is shown in the admin panel.
+  const booking = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id: created.id });
+  // Notify the admin in the background; the result is shown in the admin panel.
   notifyAdmin(booking)
-    .then((result) => query('UPDATE dbo.Bookings SET NotifyResult = @r WHERE Id = @id', { r: JSON.stringify(result), id: booking.id }))
+    .then((result) => query('UPDATE bookings SET notify_result = @r WHERE id = @id', { r: JSON.stringify(result), id: booking.id }))
     .catch((e) => console.warn('[notify]', e.message));
   res.status(201).json({ booking });
 }));
 
 app.get('/api/bookings/mine', requireAuth, h(async (req, res) => {
-  res.json({ bookings: await query(`${BOOKING_SELECT} WHERE b.UserId = @id ORDER BY b.Id DESC`, { id: req.user.id }) });
+  res.json({ bookings: await query(`${BOOKING_SELECT} WHERE b.user_id = @id ORDER BY b.id DESC`, { id: req.user.id }) });
 }));
 
 app.post('/api/bookings/:id/cancel', requireAuth, h(async (req, res) => {
-  const b = await one('SELECT Id, Status FROM dbo.Bookings WHERE Id = @id AND UserId = @uid', { id: Number(req.params.id), uid: req.user.id });
+  const b = await one('SELECT id, status FROM bookings WHERE id = @id AND user_id = @uid', { id: Number(req.params.id) || 0, uid: req.user.id });
   if (!b) return res.status(404).json({ error: 'Không tìm thấy lịch hẹn.' });
-  if (!['pending', 'confirmed'].includes(b.Status)) return res.status(400).json({ error: 'Lịch hẹn này không thể hủy.' });
-  await query("UPDATE dbo.Bookings SET Status = 'cancelled' WHERE Id = @id", { id: b.Id });
+  if (!['pending', 'confirmed'].includes(b.status)) return res.status(400).json({ error: 'Lịch hẹn này không thể hủy.' });
+  await query("UPDATE bookings SET status = 'cancelled' WHERE id = @id", { id: b.id });
   res.json({ ok: true });
 }));
 
@@ -240,8 +273,8 @@ app.get('/api/slots', h(async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.json({ full: [] });
   const s = await getSettings();
   const capacity = Math.max(1, Number(s.slotCapacity) || 3);
-  const rows = await query(`SELECT BookingTime AS time, COUNT(*) AS n FROM dbo.Bookings
-    WHERE BookingDate = @date AND Status IN ('pending','confirmed') GROUP BY BookingTime`, { date });
+  const rows = await query(`SELECT booking_time AS time, COUNT(*) AS n FROM bookings
+    WHERE booking_date = @date::date AND status IN ('pending', 'confirmed') GROUP BY booking_time`, { date });
   res.json({ full: rows.filter((r) => r.n >= capacity).map((r) => r.time) });
 }));
 
@@ -249,83 +282,95 @@ app.get('/api/slots', h(async (req, res) => {
 const admin = express.Router();
 admin.use(requireAdmin);
 
+const localDay = (col) => `to_char(${col} AT TIME ZONE '${APP_TZ}', 'YYYY-MM-DD')`;
+function localMidnight(daysBack = 0) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - daysBack); // process TZ = salon TZ
+}
+
 admin.get('/stats', h(async (req, res) => {
+  await analytics.flush(); // include page views still buffered in memory
   const days = Math.min(Math.max(Number(req.query.days) || 14, 7), 90);
-  const p = { back: days - 1 };
-  const inRange = 'CreatedAt >= DATEADD(day, -@back, CAST(GETDATE() AS date))';
-  const isToday = 'CreatedAt >= CAST(GETDATE() AS date)';
+  const p = { since: localMidnight(days - 1), today: localMidnight(0) };
   const [totals, series, bookingSeries, devices, referrers, topDesigns] = await Promise.all([
     one(`SELECT
-      (SELECT COUNT(*) FROM dbo.Visits WHERE ${inRange}) AS views,
-      (SELECT COUNT(DISTINCT VisitorId) FROM dbo.Visits WHERE ${inRange}) AS visitors,
-      (SELECT COUNT(*) FROM dbo.Visits WHERE ${isToday}) AS today,
-      (SELECT COUNT(DISTINCT VisitorId) FROM dbo.Visits WHERE ${isToday}) AS todayVisitors,
-      (SELECT COUNT(*) FROM dbo.Visits) AS allViews,
-      (SELECT COUNT(*) FROM dbo.Bookings WHERE Kind = 'booking' AND ${inRange}) AS bookings,
-      (SELECT COUNT(*) FROM dbo.Bookings WHERE Kind = 'consult' AND ${inRange}) AS consults,
-      (SELECT COUNT(*) FROM dbo.Bookings WHERE Status = 'pending') AS pending,
-      (SELECT COUNT(*) FROM dbo.Users WHERE Role = 'customer') AS customers`, p),
-    query(`SELECT CONVERT(char(10), CreatedAt, 23) AS day, COUNT(*) AS views, COUNT(DISTINCT VisitorId) AS visitors
-      FROM dbo.Visits WHERE ${inRange} GROUP BY CONVERT(char(10), CreatedAt, 23)`, p),
-    query(`SELECT CONVERT(char(10), CreatedAt, 23) AS day, COUNT(*) AS n FROM dbo.Bookings WHERE ${inRange}
-      GROUP BY CONVERT(char(10), CreatedAt, 23)`, p),
-    query(`SELECT COALESCE(Device, 'desktop') AS device, COUNT(*) AS n FROM dbo.Visits WHERE ${inRange} GROUP BY Device ORDER BY n DESC`, p),
-    query(`SELECT TOP 6 COALESCE(Referrer, N'Truy cập trực tiếp') AS ref, COUNT(*) AS n FROM dbo.Visits WHERE ${inRange}
-      GROUP BY Referrer ORDER BY n DESC`, p),
-    query(`SELECT TOP 5 Id AS id, Title AS title, COALESCE(ThumbUrl, ImageUrl) AS thumb, Views AS views FROM dbo.Designs
-      WHERE Views > 0 ORDER BY Views DESC`),
+      (SELECT COUNT(*) FROM visits WHERE created_at >= @since) AS views,
+      (SELECT COUNT(DISTINCT visitor_id) FROM visits WHERE created_at >= @since) AS visitors,
+      (SELECT COUNT(*) FROM visits WHERE created_at >= @today) AS today,
+      (SELECT COUNT(DISTINCT visitor_id) FROM visits WHERE created_at >= @today) AS "todayVisitors",
+      (SELECT COUNT(*) FROM visits) AS "allViews",
+      (SELECT COUNT(*) FROM bookings WHERE kind = 'booking' AND created_at >= @since) AS bookings,
+      (SELECT COUNT(*) FROM bookings WHERE kind = 'consult' AND created_at >= @since) AS consults,
+      (SELECT COUNT(*) FROM bookings WHERE status = 'pending') AS pending,
+      (SELECT COUNT(*) FROM users WHERE role = 'customer') AS customers`, p),
+    query(`SELECT ${localDay('created_at')} AS day, COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
+      FROM visits WHERE created_at >= @since GROUP BY 1`, p),
+    query(`SELECT ${localDay('created_at')} AS day, COUNT(*) AS n FROM bookings WHERE created_at >= @since GROUP BY 1`, p),
+    query(`SELECT COALESCE(device, 'desktop') AS device, COUNT(*) AS n FROM visits WHERE created_at >= @since
+      GROUP BY 1 ORDER BY n DESC`, p),
+    query(`SELECT COALESCE(referrer, 'Truy cập trực tiếp') AS ref, COUNT(*) AS n FROM visits WHERE created_at >= @since
+      GROUP BY 1 ORDER BY n DESC LIMIT 6`, p),
+    query(`SELECT id, title, COALESCE(thumb_url, image_url) AS thumb, views FROM designs
+      WHERE views > 0 ORDER BY views DESC LIMIT 5`),
   ]);
   const vmap = Object.fromEntries(series.map((r) => [r.day, r]));
   const bmap = Object.fromEntries(bookingSeries.map((r) => [r.day, r.n]));
   const filled = [];
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const key = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const d = localMidnight(i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     filled.push({ day: key, views: vmap[key]?.views || 0, visitors: vmap[key]?.visitors || 0, bookings: bmap[key] || 0 });
   }
   res.json({ days, totals, series: filled, devices, referrers, topDesigns });
 }));
 
+const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
+
 admin.get('/bookings', h(async (req, res) => {
   const where = [];
   const p = {};
-  if (['pending', 'confirmed', 'done', 'cancelled'].includes(req.query.status)) { where.push('b.Status = @status'); p.status = req.query.status; }
-  if (['booking', 'consult'].includes(req.query.type)) { where.push('b.Kind = @kind'); p.kind = req.query.type; }
-  if (req.query.q) { where.push('(b.FullName LIKE @q OR b.Phone LIKE @q)'); p.q = `%${clean(req.query.q).slice(0, 60)}%`; }
-  if (req.query.since) { where.push('b.Id > @since'); p.since = Number(req.query.since) || 0; }
-  const sqlText = `${BOOKING_SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY b.Id DESC OFFSET 0 ROWS FETCH NEXT 300 ROWS ONLY`;
-  res.json({ bookings: await query(sqlText, p) });
+  if (['pending', 'confirmed', 'done', 'cancelled'].includes(req.query.status)) { where.push('b.status = @status'); p.status = req.query.status; }
+  if (['booking', 'consult'].includes(req.query.type)) { where.push('b.kind = @kind'); p.kind = req.query.type; }
+  if (req.query.since) { where.push('b.id > @since'); p.since = Number(req.query.since) || 0; }
+  // Name/phone search is done here, accent- and case-insensitively ("dong" finds "Đồng"),
+  // independent of the database's locale settings.
+  const q = fold(clean(req.query.q).slice(0, 60));
+  const sqlText = `${BOOKING_SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY b.id DESC ${q ? '' : 'LIMIT 300'}`;
+  let bookings = await query(sqlText, p);
+  if (q) bookings = bookings.filter((b) => fold(b.name).includes(q) || b.phone.includes(q)).slice(0, 300);
+  res.json({ bookings });
 }));
 
 admin.patch('/bookings/:id', h(async (req, res) => {
   const status = req.body.status;
   if (!['pending', 'confirmed', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
-  await query('UPDATE dbo.Bookings SET Status = @status WHERE Id = @id', { status, id: Number(req.params.id) });
+  await query('UPDATE bookings SET status = @status WHERE id = @id', { status, id: Number(req.params.id) || 0 });
   res.json({ ok: true });
 }));
 
 admin.delete('/bookings/:id', h(async (req, res) => {
-  await query('DELETE FROM dbo.Bookings WHERE Id = @id', { id: Number(req.params.id) });
+  await query('DELETE FROM bookings WHERE id = @id', { id: Number(req.params.id) || 0 });
   res.json({ ok: true });
 }));
 
 admin.get('/customers', h(async (req, res) => {
-  res.json({ customers: await query(`SELECT u.Id AS id, u.Email AS email, u.FullName AS name, u.Phone AS phone, u.Role AS role,
-    u.CreatedAt AS created_at, (SELECT COUNT(*) FROM dbo.Bookings b WHERE b.UserId = u.Id) AS bookings
-    FROM dbo.Users u ORDER BY u.Id DESC`) });
+  res.json({ customers: await query(`SELECT u.id, u.email, u.full_name AS name, u.phone, u.role, u.created_at,
+    (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) AS bookings
+    FROM users u ORDER BY u.id DESC`) });
 }));
 
 admin.patch('/customers/:id', h(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = Number(req.params.id) || 0;
   const role = req.body.role;
   if (!['admin', 'customer'].includes(role)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
   if (id === req.user.id) return res.status(400).json({ error: 'Bạn không thể tự đổi quyền của chính mình.' });
-  await query('UPDATE dbo.Users SET Role = @role WHERE Id = @id', { role, id });
-  if (role === 'customer') await query('DELETE FROM dbo.Sessions WHERE UserId = @id', { id }); // revoke admin sessions
+  await query('UPDATE users SET role = @role WHERE id = @id', { role, id });
+  if (role === 'customer') await query('DELETE FROM sessions WHERE user_id = @id', { id }); // revoke admin sessions
+  forgetSessions();
   res.json({ ok: true });
 }));
 
-// ----- image upload: re-encoded to WebP (strips metadata, bounds size) -----
+// ----- image upload: re-encoded to WebP (strips metadata, bounds size), stored in the DB -----
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
@@ -334,7 +379,7 @@ const upload = multer({
 
 // Favicon: the logo on a rounded tile whose shade contrasts with the logo,
 // so it stays visible on both light and dark browser tab bars.
-async function makeFavicon(logo, out) {
+async function makeFavicon(logo) {
   const S = 64, PAD = 7;
   const mark = await logo.clone().resize(S - PAD * 2, S - PAD * 2, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -346,44 +391,52 @@ async function makeFavicon(logo, out) {
   }
   const tile = weight && lum / weight < 0.55 ? '#FBF7F4' : '#2E1A24';
   const bg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" rx="14" fill="${tile}"/></svg>`);
-  await sharp(bg)
+  return sharp(bg)
     .composite([{ input: mark.data, raw: { width: mark.info.width, height: mark.info.height, channels: 4 }, left: PAD, top: PAD }])
-    .png().toFile(out);
+    .png().toBuffer();
 }
 
 admin.post('/upload', upload.single('image'), h(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Chỉ nhận ảnh JPG, PNG, WEBP, AVIF tối đa 8MB.' });
-  const base = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  let buffers;
   try {
     const img = sharp(req.file.buffer, { failOn: 'error' }).rotate();
     if (req.query.kind === 'logo') {
       // Logo keeps transparency; empty margins are trimmed so the mark fills its height.
-      // A square PNG icon is derived for the browser tab.
       let logo = img;
       try {
         logo = sharp(await img.clone().trim({ threshold: 10 }).png().toBuffer());
       } catch { /* uniform image: nothing to trim */ }
-      await logo.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 })
-        .toFile(path.join(UPLOAD_DIR, `${base}.webp`));
-      await makeFavicon(logo, path.join(UPLOAD_DIR, `${base}-icon.png`));
-      return res.json({ url: `/uploads/${base}.webp`, thumb: `/uploads/${base}.webp`, icon: `/uploads/${base}-icon.png` });
+      buffers = {
+        logo: await logo.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 }).toBuffer(),
+        icon: await makeFavicon(logo),
+      };
+    } else {
+      buffers = {
+        full: await img.clone().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer(),
+        thumb: await img.clone().resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 }).toBuffer(),
+      };
     }
-    await img.clone().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 })
-      .toFile(path.join(UPLOAD_DIR, `${base}.webp`));
-    await img.clone().resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 })
-      .toFile(path.join(UPLOAD_DIR, `${base}-sm.webp`));
   } catch {
     return res.status(400).json({ error: 'File ảnh bị lỗi hoặc không được hỗ trợ.' });
   }
-  res.json({ url: `/uploads/${base}.webp`, thumb: `/uploads/${base}-sm.webp` });
+  if (buffers.logo) {
+    const url = await images.saveImage(buffers.logo, 'webp');
+    return res.json({ url, thumb: url, icon: await images.saveImage(buffers.icon, 'png') });
+  }
+  res.json({ url: await images.saveImage(buffers.full, 'webp'), thumb: await images.saveImage(buffers.thumb, 'webp') });
 }));
 
 // ----- designs -----
 admin.get('/designs', h(async (req, res) => {
-  res.json({ designs: await query(`SELECT ${DESIGN_COLS} FROM dbo.Designs d ORDER BY d.Id DESC`) });
+  res.json({ designs: await query(`SELECT ${DESIGN_COLS} FROM designs d ORDER BY d.id DESC`) });
 }));
 
-const localImage = (v) => { const s = clean(v); return /^\/(uploads|images)\/[\w./-]+$/.test(s) && !s.includes('..') ? s : ''; };
+// Only images served by this site are accepted (DB images, bundled images, legacy local uploads).
+const localImage = (v) => {
+  const s = clean(v);
+  return /^\/img\/[a-f0-9]{24}\.(webp|png)$/.test(s) || (/^\/(images|uploads)\/[\w./-]+$/.test(s) && !s.includes('..')) ? s : '';
+};
 
 function designParams(b) {
   const title = clean(b.title);
@@ -402,42 +455,48 @@ function designParams(b) {
 admin.post('/designs', h(async (req, res) => {
   const { p, error } = designParams(req.body);
   if (error) return res.status(422).json({ error });
-  const r = await one(`INSERT INTO dbo.Designs(Title, Description, ImageUrl, ThumbUrl, CategoryId, ColorId, Price, IsFeatured, IsActive)
-    OUTPUT INSERTED.Id AS id VALUES (@title, @description, @image, @thumb, @categoryId, @colorId, @price, @featured, @active)`, p);
+  const r = await one(`INSERT INTO designs (title, description, image_url, thumb_url, category_id, color_id, price, is_featured, is_active)
+    VALUES (@title, @description, @image, @thumb, @categoryId, @colorId, @price, @featured, @active) RETURNING id`, p);
+  invalidateCatalog();
   res.status(201).json(r);
 }));
 
 admin.put('/designs/:id', h(async (req, res) => {
   const { p, error } = designParams(req.body);
   if (error) return res.status(422).json({ error });
-  await query(`UPDATE dbo.Designs SET Title=@title, Description=@description, ImageUrl=@image, ThumbUrl=@thumb, CategoryId=@categoryId,
-    ColorId=@colorId, Price=@price, IsFeatured=@featured, IsActive=@active WHERE Id=@id`, { ...p, id: Number(req.params.id) });
+  await query(`UPDATE designs SET title = @title, description = @description, image_url = @image, thumb_url = @thumb,
+    category_id = @categoryId, color_id = @colorId, price = @price, is_featured = @featured, is_active = @active WHERE id = @id`,
+  { ...p, id: Number(req.params.id) || 0 });
+  invalidateCatalog();
   res.json({ ok: true });
 }));
 
 admin.delete('/designs/:id', h(async (req, res) => {
-  await query('DELETE FROM dbo.Designs WHERE Id = @id', { id: Number(req.params.id) });
+  await query('DELETE FROM designs WHERE id = @id', { id: Number(req.params.id) || 0 });
+  invalidateCatalog();
   res.json({ ok: true });
 }));
 
 // ----- colors / categories / services -----
-function crud(route, table, map, validate, beforeDelete) {
+function crud(route, table, map, validate) {
   const cols = Object.keys(map);
   admin.post(`/${route}`, h(async (req, res) => {
     const e = validate(req.body); if (e) return res.status(422).json({ error: e });
     const p = Object.fromEntries(cols.map((c) => [c, map[c](req.body)]));
-    res.status(201).json(await one(`INSERT INTO dbo.${table}(${cols.join(',')}) OUTPUT INSERTED.Id AS id VALUES (${cols.map((c) => '@' + c).join(',')})`, p));
+    const r = await one(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')}) RETURNING id`, p);
+    invalidateCatalog();
+    res.status(201).json(r);
   }));
   admin.put(`/${route}/:id`, h(async (req, res) => {
     const e = validate(req.body); if (e) return res.status(422).json({ error: e });
     const p = Object.fromEntries(cols.map((c) => [c, map[c](req.body)]));
-    await query(`UPDATE dbo.${table} SET ${cols.map((c) => `${c}=@${c}`).join(',')} WHERE Id=@id`, { ...p, id: Number(req.params.id) });
+    await query(`UPDATE ${table} SET ${cols.map((c) => `${c} = @${c}`).join(', ')} WHERE id = @id`, { ...p, id: Number(req.params.id) || 0 });
+    invalidateCatalog();
     res.json({ ok: true });
   }));
   admin.delete(`/${route}/:id`, h(async (req, res) => {
-    const id = Number(req.params.id);
-    if (beforeDelete) await beforeDelete(id);
-    await query(`DELETE FROM dbo.${table} WHERE Id = @id`, { id });
+    await query(`DELETE FROM ${table} WHERE id = @id`, { id: Number(req.params.id) || 0 });
+    invalidateCatalog();
     res.json({ ok: true });
   }));
 }
@@ -445,21 +504,20 @@ const text = (k, max) => (b) => clean(b[k]).slice(0, max) || null;
 const int = (k) => (b) => Math.max(0, Math.round(Number(b[k]) || 0));
 const flag = (k) => (b) => b[k] !== false && b[k] !== 0 && b[k] !== '0';
 
-crud('colors', 'Colors',
-  { Name: text('name', 40), Hex: (b) => clean(b.hex).toUpperCase(), Finish: (b) => (['gloss', 'matte', 'chrome', 'cateye'].includes(b.finish) ? b.finish : 'gloss'), SortOrder: int('sort') },
-  (b) => (clean(b.name).length < 2 ? 'Tên màu tối thiểu 2 ký tự.' : !/^#[0-9a-f]{6}$/i.test(clean(b.hex)) ? 'Mã màu phải có dạng #RRGGBB.' : null),
-  (id) => query('UPDATE dbo.Bookings SET ColorId = NULL WHERE ColorId = @id', { id }));
-crud('categories', 'Categories',
-  { Name: text('name', 40), SortOrder: int('sort') },
+crud('colors', 'colors',
+  { name: text('name', 40), hex: (b) => clean(b.hex).toUpperCase(), finish: (b) => (['gloss', 'matte', 'chrome', 'cateye'].includes(b.finish) ? b.finish : 'gloss'), sort_order: int('sort') },
+  (b) => (clean(b.name).length < 2 ? 'Tên màu tối thiểu 2 ký tự.' : !/^#[0-9a-f]{6}$/i.test(clean(b.hex)) ? 'Mã màu phải có dạng #RRGGBB.' : null));
+crud('categories', 'categories',
+  { name: text('name', 40), sort_order: int('sort') },
   (b) => (clean(b.name).length < 2 ? 'Tên danh mục tối thiểu 2 ký tự.' : null));
-crud('services', 'Services',
-  { Name: text('name', 80), Description: text('description', 300), PriceFrom: int('price_from'), DurationMin: int('duration'),
-    ImageUrl: (b) => localImage(b.image) || null, SortOrder: int('sort'), IsActive: flag('active') },
+crud('services', 'services',
+  { name: text('name', 80), description: text('description', 300), price_from: int('price_from'), duration_min: int('duration'),
+    image_url: (b) => localImage(b.image) || null, sort_order: int('sort'), is_active: flag('active') },
   (b) => (clean(b.name).length < 2 ? 'Tên dịch vụ tối thiểu 2 ký tự.' : null));
 
 admin.get('/services', h(async (req, res) => {
-  res.json({ services: await query(`SELECT Id AS id, Name AS name, Description AS description, PriceFrom AS price_from,
-    DurationMin AS duration, ImageUrl AS image, SortOrder AS sort, IsActive AS active FROM dbo.Services ORDER BY SortOrder, Id`) });
+  res.json({ services: await query(`SELECT id, name, description, price_from, duration_min AS duration, image_url AS image,
+    sort_order AS sort, is_active AS active FROM services ORDER BY sort_order, id`) });
 }));
 
 // ----- settings & notifications -----
@@ -501,10 +559,10 @@ app.use('/api/admin', admin);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
 // ---------------- static ----------------
-app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
+if (fs.existsSync(LEGACY_UPLOAD_DIR)) app.use('/uploads', express.static(LEGACY_UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules/three'), { maxAge: '7d' }));
 app.use('/vendor/chart.js', express.static(path.join(__dirname, 'node_modules/chart.js/dist'), { maxAge: '7d' }));
-app.get(['/admin', '/admin/', '/admin/index.html'], (req, res, next) => {
+app.get(['/admin', '/admin/', '/admin/index.html'], (req, res) => {
   if (req.user?.role !== 'admin') return res.redirect('/?login=admin');
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
@@ -527,10 +585,26 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
 });
 
+// ---------------- start / stop ----------------
+let server;
 db.init()
-  .then(() => app.listen(PORT, () => console.log(`Nail studio: http://localhost:${PORT}   ·   Quản trị: http://localhost:${PORT}/admin`)))
+  .then(() => {
+    server = app.listen(PORT, () => console.log(`Nail studio: http://localhost:${PORT}   ·   Quản trị: http://localhost:${PORT}/admin`));
+    images.purgeOrphans().catch((e) => console.warn('[images]', e.message));
+    setInterval(() => images.purgeOrphans().catch(() => {}), 24 * 3600_000).unref();
+  })
   .catch((e) => {
-    console.error('Không kết nối được SQL Server:', e.message);
-    console.error('Kiểm tra file .env (DB_SERVER, DB_PORT, DB_USER, DB_PASSWORD) và đã chạy database/01_schema.sql.');
+    console.error('Không kết nối được PostgreSQL:', e.message);
+    console.error('Kiểm tra DATABASE_URL trong file .env (hoặc biến môi trường trên host).');
     process.exit(1);
   });
+
+// Hosts stop the app with SIGTERM on deploy/restart: save buffered page views first.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    server?.close();
+    await analytics.flush().catch(() => {});
+    await db.pool.end().catch(() => {});
+    process.exit(0);
+  });
+}
