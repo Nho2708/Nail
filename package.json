@@ -1,0 +1,23 @@
+{
+  "name": "lumiere-nail-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website xem mẫu & đặt lịch làm nail (khách hàng + admin)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "share": "node scripts/share.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.4",
+    "three": "^0.170.0"
+  }
+}
