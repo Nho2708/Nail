@@ -8,7 +8,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 
 const db = require('./src/db');
-const { query, one, getSettings, saveSettings, APP_TZ } = db;
+const { query, one, getSettings, saveSettings, APP_TZ, CACHE_TTL_MS } = db;
 const { hashPassword, verifyPassword, newToken, rateLimit } = require('./src/security');
 const { validateBooking, validateRegister, clean, normPhone, PHONE_RE } = require('./src/validate');
 const { notifyAdmin } = require('./src/notify');
@@ -101,9 +101,10 @@ const DESIGN_COLS = `d.id, d.title, d.description, d.image_url AS image, COALESC
 
 // The public catalogue changes only when an admin edits it, so it is cached until then.
 let catalogCache = null;
+let catalogAt = 0;
 const invalidateCatalog = () => { catalogCache = null; };
 app.get('/api/catalog', h(async (req, res) => {
-  if (!catalogCache) {
+  if (!catalogCache || Date.now() - catalogAt > CACHE_TTL_MS) {
     const [categories, colors, services, designs] = await Promise.all([
       query('SELECT id, name, sort_order AS sort FROM categories ORDER BY sort_order, id'),
       query('SELECT id, name, hex, finish, sort_order AS sort FROM colors ORDER BY sort_order, id'),
@@ -112,6 +113,7 @@ app.get('/api/catalog', h(async (req, res) => {
       query(`SELECT ${DESIGN_COLS} FROM designs d WHERE d.is_active ORDER BY d.is_featured DESC, d.id DESC`),
     ]);
     catalogCache = { categories, colors, services, designs };
+    catalogAt = Date.now();
   }
   res.json(catalogCache);
 }));

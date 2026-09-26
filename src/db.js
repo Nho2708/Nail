@@ -17,7 +17,9 @@ if (!process.env.DATABASE_URL) {
 }
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  // Hosted Postgres URLs (Neon, Supabase…) say sslmode=require; pg already treats that as verify-full,
+  // so say so explicitly — same security, no deprecation warning in the logs.
+  connectionString: process.env.DATABASE_URL.replace(/sslmode=(require|prefer|verify-ca)\b/, 'sslmode=verify-full'),
   max: 5,
   // Close idle connections quickly so a serverless database (Neon) can scale to zero.
   idleTimeoutMillis: 10_000,
@@ -113,9 +115,12 @@ const DEFAULT_SETTINGS = {
 };
 const PRIVATE_KEYS = Object.keys(DEFAULT_SETTINGS).filter((k) => k.startsWith('notify'));
 
+// Refreshed at least every 10 minutes so changes made by another server sharing the DB show up.
+const CACHE_TTL_MS = 10 * 60_000;
 let settingsCache = null;
+let settingsAt = 0;
 async function getSettings({ includePrivate = false } = {}) {
-  if (!settingsCache) {
+  if (!settingsCache || Date.now() - settingsAt > CACHE_TTL_MS) {
     const rows = await query('SELECT setting_key, setting_value FROM settings');
     const out = { ...DEFAULT_SETTINGS };
     for (const r of rows) {
@@ -123,6 +128,7 @@ async function getSettings({ includePrivate = false } = {}) {
       try { out[r.setting_key] = JSON.parse(r.setting_value); } catch { out[r.setting_key] = r.setting_value; }
     }
     settingsCache = out;
+    settingsAt = Date.now();
   }
   const out = { ...settingsCache };
   if (!includePrivate) for (const k of PRIVATE_KEYS) delete out[k];
@@ -161,4 +167,4 @@ async function init() {
   await query('DELETE FROM sessions WHERE expires_at < now()');
 }
 
-module.exports = { pool, init, query, one, transaction, getSettings, saveSettings, DEFAULT_SETTINGS, PRIVATE_KEYS, APP_TZ };
+module.exports = { CACHE_TTL_MS, pool, init, query, one, transaction, getSettings, saveSettings, DEFAULT_SETTINGS, PRIVATE_KEYS, APP_TZ };
