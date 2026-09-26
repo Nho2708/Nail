@@ -1,6 +1,6 @@
 import {
   api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, todayISO, tabTitle,
-  validateForm, liveValidate, applyServerErrors, setFieldError, applyTheme, STATUS,
+  validateForm, liveValidate, applyServerErrors, setFieldError, applyTheme, STATUS, enhancePasswordFields, hidePasswords,
 } from './common.js';
 
 const state = {
@@ -17,6 +17,8 @@ const state = {
 
 // ================= bootstrap =================
 hydrateIcons();
+enhancePasswordFields();
+document.addEventListener('close', (e) => hidePasswords(e.target), true); // dialogs: don't leave a password revealed
 $('#year').textContent = new Date().getFullYear();
 init();
 
@@ -108,6 +110,10 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : '#');
 function renderAccount() {
   const slot = $('#account-slot');
   const u = state.user;
+  $('#hero-account-point').innerHTML = u
+    ? `Đặt lịch nhanh bằng tài khoản <strong>${esc(u.name)}</strong>`
+    : '<button type="button" class="inline-link" data-register>Đăng ký</button> để đặt lịch nhanh hơn';
+  renderLbNote();
   if (!u) {
     slot.innerHTML = `<button class="btn btn-ghost btn-sm" id="login-btn">${icon('user', 18)}<span class="hide-sm">Đăng nhập</span></button>`;
     $('#login-btn').setAttribute('aria-label', 'Đăng nhập hoặc đăng ký');
@@ -288,13 +294,18 @@ function showLightboxItem() {
   $('#lb-counter').textContent = `Mẫu ${state.lbIndex + 1} / ${state.list.length}`;
   const multi = state.list.length > 1;
   $('#lb-prev').hidden = $('#lb-next').hidden = !multi;
-  $('#lb-note').textContent = state.user ? `Đặt nhanh bằng tài khoản ${state.user.name}` : 'Không cần đăng nhập để đặt lịch';
+  renderLbNote();
   track(`/mau/${d.id}`, d.id);
   // preload neighbours
   for (const k of [1, -1]) {
     const n = state.list[(state.lbIndex + k + state.list.length) % state.list.length];
     if (n) new Image().src = n.image;
   }
+}
+function renderLbNote() {
+  $('#lb-note').innerHTML = state.user
+    ? `Đặt nhanh bằng tài khoản ${esc(state.user.name)}`
+    : '<button type="button" class="inline-link" data-register>Đăng ký</button> để đặt lịch nhanh hơn';
 }
 function stepLightbox(dir) {
   state.lbIndex = (state.lbIndex + dir + state.list.length) % state.list.length;
@@ -576,8 +587,13 @@ for (const [formId, url] of [['#login-form', '/api/auth/login'], ['#register-for
     const btn = $('button[type=submit]', form);
     btn.classList.add('loading');
     try {
-      const { user } = await api(url, { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+      const body = Object.fromEntries(new FormData(form));
+      const { user } = await api(url, { method: 'POST', body });
       state.user = user;
+      // Ask the browser to remember these credentials (Chrome / Edge / Opera show their "Save password?" prompt).
+      if (window.PasswordCredential && (formId === '#register-form' || body.remember)) {
+        await navigator.credentials.store(new PasswordCredential({ id: body.email, password: body.password, name: user.name })).catch(() => {});
+      }
       authDialog.close();
       form.reset();
       if (user.role === 'admin' && new URLSearchParams(location.search).get('login') === 'admin') { location.href = '/admin'; return; }
@@ -750,6 +766,7 @@ function wireUI() {
     if (accMenu && !accMenu.hidden && !t.closest('#account-slot')) { accMenu.hidden = true; $('#acc-btn').setAttribute('aria-expanded', 'false'); }
     if (t.closest('[data-book]')) { e.preventDefault(); if (meDialog.open) meDialog.close(); openBooking({ kind: 'booking' }); return; }
     if (t.closest('[data-consult]')) { e.preventDefault(); openBooking({ kind: 'consult' }); return; }
+    if (t.closest('[data-register]')) { e.preventDefault(); openAuth('register'); return; }
     const svc = t.closest('[data-book-service]');
     if (svc) { openBooking({ kind: 'booking', serviceId: svc.dataset.bookService }); return; }
     const card = t.closest('.design-card');

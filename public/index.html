@@ -69,7 +69,7 @@
             <a class="btn btn-ghost btn-lg" href="#gallery">Xem bộ sưu tập<span data-icon="right" data-size="18"></span></a>
           </div>
           <ul class="hero-points">
-            <li><span data-icon="check" data-size="16"></span>Không cần tài khoản để đặt lịch</li>
+            <li><span data-icon="check" data-size="16"></span><span id="hero-account-point"><button type="button" class="inline-link" data-register>Đăng ký</button> để đặt lịch nhanh hơn</span></li>
             <li><span data-icon="check" data-size="16"></span>Xác nhận nhanh qua điện thoại</li>
           </ul>
         </div>
@@ -353,15 +353,16 @@
         <button role="tab" aria-selected="false" data-auth="register">Đăng ký</button>
       </div>
       <form id="login-form" novalidate>
-        <div class="field"><label for="li-email">Email</label><input id="li-email" name="email" type="email" autocomplete="email" data-rule="email" required></div>
+        <div class="field"><label for="li-email">Email</label><input id="li-email" name="email" type="email" autocomplete="username" data-rule="email" required></div>
         <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" name="password" type="password" autocomplete="current-password" data-rule="required" required></div>
+        <label class="check-row"><input type="checkbox" name="remember" checked>Ghi nhớ đăng nhập</label>
         <div class="form-error" role="alert" hidden></div>
         <button class="btn btn-primary btn-block" type="submit">Đăng nhập</button>
       </form>
       <form id="register-form" novalidate hidden>
         <div class="field"><label for="rg-name">Họ và tên</label><input id="rg-name" name="name" autocomplete="name" data-rule="name" required></div>
         <div class="field"><label for="rg-phone">Số điện thoại</label><input id="rg-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" data-rule="phone" required></div>
-        <div class="field"><label for="rg-email">Email</label><input id="rg-email" name="email" type="email" autocomplete="email" data-rule="email" required></div>
+        <div class="field"><label for="rg-email">Email</label><input id="rg-email" name="email" type="email" autocomplete="username" data-rule="email" required></div>
         <div class="field"><label for="rg-pass">Mật khẩu</label><input id="rg-pass" name="password" type="password" autocomplete="new-password" data-rule="password" required><p class="hint">Tối thiểu 8 ký tự, gồm cả chữ và số.</p></div>
         <div class="form-error" role="alert" hidden></div>
         <button class="btn btn-primary btn-block" type="submit">Tạo tài khoản</button>

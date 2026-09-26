@@ -330,6 +330,15 @@ body.modal-open { overflow: hidden; }
 .field-error { color: var(--danger); font-size: 13px; display: flex; gap: 4px; }
 .field-error:empty { display: none; }
 .hint { font-size: 13px; color: var(--muted); }
+/* show / hide password */
+.pw-wrap { position: relative; }
+.field .pw-wrap input { padding-right: 52px; }
+.pw-toggle { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; height: 42px; display: grid; place-items: center; border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
+.pw-toggle:hover { color: var(--text); background: var(--soft); }
+input::-ms-reveal, input::-ms-clear { display: none; } /* Edge's own eye button would duplicate ours */
+.check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: -4px 0 12px; font-size: 14px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; accent-color: var(--primary); }
+.inline-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--primary); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .form-error { background: color-mix(in srgb, var(--danger) 8%, #fff); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 25%, #fff); padding: 10px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 14px; }
 .form-foot { font-size: 13px; color: var(--muted); text-align: center; margin-top: 12px; }
 .form-foot button { background: none; border: 0; color: var(--primary); font-weight: 600; cursor: pointer; text-decoration: underline; padding: 4px; }

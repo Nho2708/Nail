@@ -1,4 +1,4 @@
-import { api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, fmtDateTime, setFieldError, STATUS, FONT_OPTIONS, applyTheme, tabTitle } from '/js/common.js';
+import { api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, fmtDateTime, setFieldError, STATUS, FONT_OPTIONS, applyTheme, tabTitle, enhancePasswordFields } from '/js/common.js';
 
 const VIEWS = {
   dashboard: { title: 'Thống kê truy cập', render: renderDashboard },
@@ -923,6 +923,7 @@ async function renderAccount() {
       </form>
     </section>`;
   const form = $('#acc-form');
+  enhancePasswordFields(form);
   form.onsubmit = async (e) => {
     e.preventDefault();
     const err = $('.form-error', form);

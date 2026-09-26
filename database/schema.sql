@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_sessions_expires ON sessions (expires_at);
+-- "Ghi nhớ đăng nhập": remembered sessions last 30 days and renew while used; others end with the browser session
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS remember BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- ---------- catalogue ----------
 CREATE TABLE IF NOT EXISTS categories (
