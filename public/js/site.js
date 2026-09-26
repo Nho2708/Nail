@@ -33,6 +33,8 @@ async function init() {
   renderAll();
   track();
   wireUI();
+  ready = true;
+  if (pendingPreview) applyPreview(pendingPreview);
   const params = new URLSearchParams(location.search);
   if (params.has('login')) openAuth('login', params.get('login') === 'admin' ? 'Đăng nhập bằng tài khoản quản trị để vào trang admin.' : '');
 }
@@ -144,26 +146,49 @@ function renderAccount() {
 }
 
 // ================= services =================
+// "Dịch vụ" section: the full price-list image (optional) beside the bookable menu items.
 function renderServices() {
-  const grid = $('#service-grid');
+  const s = state.settings;
   const list = state.catalog.services;
+  const hasImage = !!s.servicesMenuImage;
+  const layout = $('#menu-layout');
+  layout.classList.toggle('no-image', !hasImage);
+  layout.classList.toggle('image-right', s.servicesImageSide === 'right');
+  $('#menu-image').hidden = !hasImage;
+  if (hasImage) {
+    const img = $('#menu-image-img');
+    const src = s.servicesMenuThumb || s.servicesMenuImage;
+    if (img.getAttribute('src') !== src) img.src = src;
+    img.alt = `Menu dịch vụ ${s.brandName || ''}`.trim();
+  }
+
+  const box = $('#service-grid');
+  box.classList.toggle('is-empty', !list.length);
   if (!list.length) {
-    grid.innerHTML = emptyBox('scissors', 'Dịch vụ đang được cập nhật', 'Liên hệ với chúng tôi để được tư vấn dịch vụ phù hợp.');
+    box.innerHTML = hasImage
+      ? `<div class="menu-cta"><h3>Đã chọn được dịch vụ?</h3><p>Xem bảng giá trong ảnh menu, rồi đặt lịch và ghi dịch vụ bạn muốn vào phần ghi chú.</p>
+         <button class="btn btn-primary" data-book>${icon('calendar', 18)}Đặt lịch ngay</button></div>`
+      : emptyBox('scissors', 'Dịch vụ đang được cập nhật', 'Liên hệ với chúng tôi để được tư vấn dịch vụ phù hợp.');
     return;
   }
-  grid.innerHTML = list.map((s) => `
-    <article class="service-card">
-      <div class="media ${s.image ? '' : 'noimg'}">${s.image ? `<img src="${esc(s.image)}" alt="" loading="lazy" width="400" height="300">` : icon('sparkles', 40)}</div>
-      <div class="body">
-        <h3>${esc(s.name)}</h3>
-        ${s.description ? `<p>${esc(s.description)}</p>` : ''}
-        <div class="service-meta">
-          <span>${s.price_from > 0 ? `Từ <strong>${vnd(s.price_from)}</strong>` : '<strong>Liên hệ</strong>'}</span>
-          <span>${s.duration ? `${icon('clock', 14)} ${s.duration} phút` : ''}</span>
-        </div>
-        <button class="link-btn" data-book-service="${s.id}">Đặt dịch vụ này ${icon('right', 16)}</button>
-      </div>
-    </article>`).join('');
+  // Keep the admin's order; items without a group come first, under no heading.
+  const groups = new Map();
+  for (const item of list) {
+    const g = (item.group || '').trim();
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(item);
+  }
+  box.innerHTML = [...groups].map(([g, items]) => `
+    <section class="menu-group">
+      ${g ? `<h3 class="menu-group-title">${esc(g)}</h3>` : ''}
+      <ul class="menu-items">${items.map((m) => `
+        <li class="menu-item">
+          <div class="mi-line"><span class="mi-name">${esc(m.name)}</span><span class="mi-dots" aria-hidden="true"></span><span class="mi-price">${vnd(m.price_from)}</span></div>
+          ${m.description || m.duration ? `<div class="mi-sub">${m.description ? `<span>${esc(m.description)}</span>` : ''}${m.duration ? `<span class="mi-dur">${icon('clock', 14)}${m.duration} phút</span>` : ''}</div>` : ''}
+          <button class="mi-book" data-book-service="${m.id}" aria-label="Đặt lịch ${esc(m.name)}">Đặt</button>
+        </li>`).join('')}
+      </ul>
+    </section>`).join('');
 }
 
 function emptyBox(ic, title, text, action = '') {
@@ -761,6 +786,28 @@ function wireUI() {
     if (n) { pickSlot(n); n.focus(); }
   });
 
+  // service menu image viewer
+  const viewer = $('#menu-viewer');
+  const viewerBody = $('#menu-viewer-body');
+  $('#menu-image-btn').onclick = () => {
+    $('#menu-viewer-img').src = state.settings.servicesMenuImage;
+    viewerBody.classList.remove('zoomed');
+    openDialog(viewer);
+  };
+  $('#menu-viewer-img').onclick = (e) => {
+    const zoomed = viewerBody.classList.toggle('zoomed');
+    if (zoomed) {
+      // keep the clicked point under the cursor after zooming in
+      const r = e.target.getBoundingClientRect();
+      const fx = (e.clientX - r.left) / r.width;
+      const fy = (e.clientY - r.top) / r.height;
+      requestAnimationFrame(() => {
+        viewerBody.scrollLeft = e.target.scrollWidth * fx - viewerBody.clientWidth / 2;
+        viewerBody.scrollTop = e.target.offsetHeight * fy - viewerBody.clientHeight / 2;
+      });
+    }
+  };
+
   // lightbox controls
   $('#lb-prev').onclick = () => stepLightbox(-1);
   $('#lb-next').onclick = () => stepLightbox(1);
@@ -844,12 +891,21 @@ function wireUI() {
   }, { rootMargin: '-45% 0px -50% 0px' });
   for (const id of ['top', 'services', 'gallery', 'try3d', 'contact']) { const el = document.getElementById(id); if (el) spy.observe(el); }
 
-  // Live preview from the admin "Giao diện" editor (same-origin iframe only).
-  window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin || e.data?.type !== 'preview-settings') return;
-    state.settings = { ...state.settings, ...e.data.settings };
-    applyTheme(state.settings);
-    fillSettings();
-    renderContact();
-  });
 }
+
+// Live preview from the admin "Thiết kế giao diện" editor (same-origin iframe only).
+// Listen from the start: the editor may post before the page has finished loading its data.
+let ready = false;
+let pendingPreview = null;
+function applyPreview(patch) {
+  state.settings = { ...state.settings, ...patch };
+  applyTheme(state.settings);
+  fillSettings();
+  renderContact();
+  renderServices();
+}
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.data?.type !== 'preview-settings') return;
+  if (ready) applyPreview(e.data.settings);
+  else pendingPreview = { ...pendingPreview, ...e.data.settings };
+});

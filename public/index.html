@@ -97,10 +97,21 @@
     <section class="section services" id="services" data-section="showServices">
       <div class="container">
         <div class="section-head">
-          <p class="eyebrow">Dịch vụ</p>
-          <h2 class="section-title">Dịch vụ đặc trưng</h2>
+          <p class="eyebrow" data-setting="servicesEyebrow" data-show="servicesEyebrow"></p>
+          <h2 class="section-title" data-setting="servicesTitle"></h2>
+          <p class="section-sub" data-setting="servicesSubtitle" data-show="servicesSubtitle"></p>
         </div>
-        <div class="service-grid" id="service-grid"></div>
+        <div class="menu-layout" id="menu-layout">
+          <figure class="menu-image" id="menu-image" hidden>
+            <button type="button" class="menu-image-btn" id="menu-image-btn" aria-label="Xem ảnh menu dịch vụ đầy đủ">
+              <img id="menu-image-img" alt="Menu dịch vụ" loading="lazy">
+              <span class="menu-zoom" aria-hidden="true" data-icon="zoom" data-size="18"></span>
+            </button>
+            <figcaption>Nhấn vào ảnh để xem menu đầy đủ</figcaption>
+          </figure>
+          <div class="menu-list" id="service-grid"></div>
+        </div>
+        <p class="menu-note" data-setting="servicesNote" data-show="servicesNote"></p>
       </div>
     </section>
 
@@ -233,6 +244,16 @@
 
   <!-- Sticky mobile CTA -->
   <div class="mobile-cta"><button class="btn btn-primary btn-block" data-book><span data-icon="calendar" data-size="18"></span>Đặt lịch ngay</button></div>
+
+  <!-- SERVICE MENU IMAGE -->
+  <dialog class="viewer" id="menu-viewer" aria-label="Menu dịch vụ">
+    <div class="viewer-bar">
+      <strong>Menu dịch vụ</strong>
+      <span class="viewer-hint">Nhấn vào ảnh để phóng to</span>
+      <button class="icon-btn" data-close aria-label="Đóng" data-icon="x"></button>
+    </div>
+    <div class="viewer-body" id="menu-viewer-body"><img id="menu-viewer-img" alt="Menu dịch vụ đầy đủ"></div>
+  </dialog>
 
   <!-- LIGHTBOX -->
   <dialog class="lightbox" id="lightbox" aria-labelledby="lb-title">

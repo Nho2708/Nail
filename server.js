@@ -108,7 +108,7 @@ app.get('/api/catalog', h(async (req, res) => {
     const [categories, colors, services, designs] = await Promise.all([
       query('SELECT id, name, sort_order AS sort FROM categories ORDER BY sort_order, id'),
       query('SELECT id, name, hex, finish, sort_order AS sort FROM colors ORDER BY sort_order, id'),
-      query(`SELECT id, name, description, price_from, duration_min AS duration, image_url AS image
+      query(`SELECT id, name, description, price_from, duration_min AS duration, group_name AS "group"
         FROM services WHERE is_active ORDER BY sort_order, id`),
       query(`SELECT ${DESIGN_COLS} FROM designs d WHERE d.is_active ORDER BY d.is_featured DESC, d.id DESC`),
     ]);
@@ -413,6 +413,12 @@ admin.post('/upload', upload.single('image'), h(async (req, res) => {
         logo: await logo.clone().resize({ width: 800, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 100 }).toBuffer(),
         icon: await makeFavicon(logo),
       };
+    } else if (req.query.kind === 'menu') {
+      // A photographed / designed price list: keep it large and sharp enough to read when zoomed.
+      buffers = {
+        full: await img.clone().resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 86 }).toBuffer(),
+        thumb: await img.clone().resize({ width: 1100, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer(),
+      };
     } else {
       buffers = {
         full: await img.clone().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer(),
@@ -513,12 +519,12 @@ crud('categories', 'categories',
   { name: text('name', 40), sort_order: int('sort') },
   (b) => (clean(b.name).length < 2 ? 'Tên danh mục tối thiểu 2 ký tự.' : null));
 crud('services', 'services',
-  { name: text('name', 80), description: text('description', 300), price_from: int('price_from'), duration_min: int('duration'),
-    image_url: (b) => localImage(b.image) || null, sort_order: int('sort'), is_active: flag('active') },
+  { name: text('name', 80), group_name: text('group', 40), description: text('description', 300), price_from: int('price_from'),
+    duration_min: int('duration'), sort_order: int('sort'), is_active: flag('active') },
   (b) => (clean(b.name).length < 2 ? 'Tên dịch vụ tối thiểu 2 ký tự.' : null));
 
 admin.get('/services', h(async (req, res) => {
-  res.json({ services: await query(`SELECT id, name, description, price_from, duration_min AS duration, image_url AS image,
+  res.json({ services: await query(`SELECT id, name, group_name AS "group", description, price_from, duration_min AS duration,
     sort_order AS sort, is_active AS active FROM services ORDER BY sort_order, id`) });
 }));
 
@@ -534,6 +540,10 @@ admin.put('/settings', h(async (req, res) => {
   }
   if (b.heroImage != null && b.heroImage !== '' && !localImage(b.heroImage)) return res.status(422).json({ error: 'Ảnh hero không hợp lệ.' });
   if (b.aboutImage != null && b.aboutImage !== '' && !localImage(b.aboutImage)) return res.status(422).json({ error: 'Ảnh giới thiệu không hợp lệ.' });
+  for (const k of ['servicesMenuImage', 'servicesMenuThumb']) {
+    if (b[k] != null && b[k] !== '' && !localImage(b[k])) return res.status(422).json({ error: 'Ảnh menu dịch vụ không hợp lệ, vui lòng tải lại.' });
+  }
+  if (b.servicesImageSide != null && !['left', 'right'].includes(b.servicesImageSide)) return res.status(422).json({ error: 'Vị trí ảnh menu không hợp lệ.' });
   for (const k of ['logoImage', 'logoIcon']) {
     if (b[k] != null && b[k] !== '' && !localImage(b[k])) return res.status(422).json({ error: 'Logo không hợp lệ, vui lòng tải lại.' });
   }
