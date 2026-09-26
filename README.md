@@ -51,6 +51,14 @@ npm start        # http://localhost:3000   ·   quản trị: http://localhost:3
 
 Lần chạy đầu tiên, hệ thống tạo tài khoản admin từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` trong `.env`. Hãy đổi mật khẩu ở mục **Tài khoản admin** sau khi đăng nhập.
 
+### 4. Tạo link xem thử công khai (tùy chọn)
+
+```bash
+npm run share    # mở ở cửa sổ thứ hai, trong khi "npm start" vẫn chạy
+```
+
+Lệnh này tạo link HTTPS dạng `https://xxx.trycloudflare.com` qua Cloudflare Quick Tunnel (cần `cloudflared.exe` trong `%LOCALAPPDATA%\cloudflared\` hoặc PATH). Link chỉ hoạt động khi máy đang bật và hai cửa sổ trên còn mở, và **đổi địa chỉ mỗi lần chạy lại**. Muốn link cố định, dùng Cloudflare Tunnel với tên miền riêng.
+
 ## Bắt đầu sử dụng (database trống)
 
 Database không có dữ liệu mẫu. Sau khi đăng nhập admin, nên tạo theo thứ tự:

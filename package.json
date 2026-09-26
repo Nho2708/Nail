@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --no-warnings server.js",
-    "dev": "node --no-warnings --watch server.js"
+    "dev": "node --no-warnings --watch server.js",
+    "share": "node scripts/share.js"
   },
   "engines": {
     "node": ">=22.13"
