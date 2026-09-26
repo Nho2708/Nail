@@ -509,6 +509,16 @@ app.get(['/admin', '/admin/', '/admin/index.html'], (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
+// Home page: put the configured tab title in the HTML so it is right before JS runs (and for link previews).
+const INDEX_HTML = path.join(__dirname, 'public', 'index.html');
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+app.get(['/', '/index.html'], h(async (req, res) => {
+  const s = await getSettings();
+  const title = (s.siteTitle || '').trim() || [s.brandName, s.tagline].filter(Boolean).join(' · ');
+  const html = (await fs.promises.readFile(INDEX_HTML, 'utf8')).replace(/<title>[^<]*<\/title>/, `<title>${escHtml(title)}</title>`);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(html);
+}));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], maxAge: 0 }));
 
 app.use((err, req, res, next) => {

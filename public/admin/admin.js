@@ -1,4 +1,4 @@
-import { api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, fmtDateTime, setFieldError, STATUS, FONT_OPTIONS, applyTheme } from '/js/common.js';
+import { api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, fmtDateTime, setFieldError, STATUS, FONT_OPTIONS, applyTheme, tabTitle } from '/js/common.js';
 
 const VIEWS = {
   dashboard: { title: 'Thống kê truy cập', render: renderDashboard },
@@ -56,8 +56,7 @@ function renderSideBrand() {
 }
 
 function setTitle() {
-  const key = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'dashboard';
-  document.title = `${VIEWS[key].title} · ${settings.brandName || 'Quản trị'}`;
+  document.title = tabTitle(settings) || 'Quản trị';
 }
 
 function wireShell() {
@@ -625,6 +624,7 @@ async function renderAppearance() {
         <details open><summary>${icon('gem', 18)}Logo & thương hiệu</summary><div class="inner">
           ${logo()}
           ${text('brandName', 'Tên tiệm', 60)}${text('tagline', 'Khẩu hiệu')}
+          <div class="field"><label for="ap-siteTitle">Tiêu đề trên tab trình duyệt</label><input id="ap-siteTitle" name="siteTitle" value="${esc(s.siteTitle)}" maxlength="120" placeholder="${esc(tabTitle({ ...s, siteTitle: '' }))}"><p class="hint">Để trống để tự dùng "Tên tiệm · Khẩu hiệu".</p></div>
         </div></details>
         <details><summary>${icon('sparkles', 18)}Nội dung trang chủ</summary><div class="inner">
           ${text('heroEyebrow', 'Dòng giới thiệu nhỏ (hero)')}${text('heroTitle', 'Tiêu đề lớn (hero)', 120)}${area('heroSubtitle', 'Mô tả (hero)')}

@@ -1,5 +1,5 @@
 import {
-  api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, todayISO,
+  api, esc, vnd, $, $$, icon, hydrateIcons, toast, fmtDate, todayISO, tabTitle,
   validateForm, liveValidate, applyServerErrors, setFieldError, applyTheme, STATUS,
 } from './common.js';
 
@@ -52,7 +52,7 @@ function renderAll() {
 // ================= settings → page =================
 function fillSettings() {
   const s = state.settings;
-  document.title = `${s.brandName} — Xem mẫu & đặt lịch làm nail`;
+  document.title = tabTitle(s);
   for (const el of $$('[data-setting]')) el.textContent = s[el.dataset.setting] || '';
   for (const el of $$('[data-show]')) el.hidden = !s[el.dataset.show];
   const tel = (s.phone || '').replace(/[^\d+]/g, '');

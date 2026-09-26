@@ -64,6 +64,7 @@ const DEFAULT_SETTINGS = {
   logoHeight: '44',
   showBrandText: true,
   tagline: 'Móng đẹp. Sang trọng tinh tế.',
+  siteTitle: '', // browser tab title; empty = "<brandName> · <tagline>"
   heroEyebrow: 'Nail Art Studio · Sài Gòn',
   heroTitle: 'Bộ móng được chăm chút như một tác phẩm',
   heroSubtitle: 'Thiết kế nail nghệ thuật và chăm sóc móng cao cấp. Chọn mẫu bạn thích, đặt lịch chỉ trong 30 giây.',

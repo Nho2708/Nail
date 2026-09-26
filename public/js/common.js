@@ -216,6 +216,9 @@ export function applyTheme(s, root = document.documentElement) {
   if (link.href !== href) link.href = href;
 }
 
+// Browser tab title shared by the customer site and the admin panel.
+export const tabTitle = (s) => (s.siteTitle || '').trim() || [s.brandName, s.tagline].filter(Boolean).join(' · ');
+
 export const FONT_OPTIONS = {
   heading: ['Playfair Display', 'Cormorant Garamond', 'Lora', 'Noto Serif Display', 'Montserrat', 'Be Vietnam Pro'],
   body: ['Be Vietnam Pro', 'Inter', 'Nunito', 'Montserrat', 'Roboto', 'Mulish'],
