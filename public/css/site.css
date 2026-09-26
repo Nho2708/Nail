@@ -121,7 +121,9 @@ a.topbar-item:hover { color: #fff; }
 .hero-visual { position: relative; justify-self: center; width: min(100%, 480px); }
 .hero-arch { aspect-ratio: 4 / 5; border-radius: 999px 999px var(--radius) var(--radius); overflow: hidden; background: var(--soft-2); box-shadow: var(--shadow-lg); }
 .hero-arch img { width: 100%; height: 100%; object-fit: cover; }
-.hero-visual::before { content: ''; position: absolute; inset: -18px -18px 18px 18px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px 999px var(--radius) var(--radius); z-index: -1; }
+/* decorative frame: same arch shape, centred on the photo with an even gap */
+.hero-visual { --frame-gap: 14px; }
+.hero-visual::before { content: ''; position: absolute; inset: calc(var(--frame-gap) * -1); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px 999px calc(var(--radius) + var(--frame-gap)) calc(var(--radius) + var(--frame-gap)); pointer-events: none; z-index: -1; }
 .hero-float { position: absolute; left: -36px; bottom: 36px; display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; background: var(--surface); border: 0; border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; text-align: left; transition: transform .25s var(--ease); max-width: 260px; }
 .hero-float:hover { transform: translateY(-3px); }
 .hero-float img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
