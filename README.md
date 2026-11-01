@@ -73,7 +73,8 @@ Database không có dữ liệu mẫu. Sau khi đăng nhập admin, nên tạo t
 
 Mỗi lịch hẹn hoặc yêu cầu tư vấn mới sẽ:
 
-- được gửi tới mọi kênh đã cấu hình: **Zalo OA API v3** (tin tư vấn tới `user_id` của admin đã quan tâm OA), **Messenger Send API** (tới PSID của admin, trong cửa sổ 24 giờ), **Telegram Bot** hoặc **Webhook** (Zapier, Make, n8n…). Kết quả gửi hiện ở cột *Báo admin* trong danh sách lịch hẹn;
+- được gửi tới mọi kênh đã cấu hình: **Zalo OA API v3** (tin tư vấn tới `user_id` của admin đã quan tâm OA), **Messenger Send API** (tới PSID của admin, trong cửa sổ 24 giờ), **Telegram Bot**, **Webhook** (Zapier, Make, n8n…) hoặc **Email** (Resend). Kết quả gửi hiện ở cột *Báo admin* trong danh sách lịch hẹn;
+- nếu khách điền email và đã cấu hình Resend, khách tự nhận email xác nhận (mỗi địa chỉ tối đa 3 email trong 24 giờ). Render bản miễn phí chặn cổng SMTP nên không gửi trực tiếp qua hộp thư của tiệm được;
 - hiện thông báo trong trang quản trị (tự kiểm tra mỗi phút khi tab đang mở, có thể bật thông báo trình duyệt bằng biểu tượng chuông);
 - ở phía khách, màn hình xác nhận có nút **Gửi qua Zalo** và **Gửi qua Messenger** để khách nhắn trực tiếp cho tiệm.
 
@@ -85,7 +86,8 @@ src/db.js              kết nối PostgreSQL, cài đặt mặc định (có ca
 src/images.js          lưu / phục vụ ảnh tải lên từ database (/img/<id>), dọn ảnh không còn dùng
 src/analytics.js       gom lượt truy cập trong bộ nhớ và ghi theo đợt
 src/validate.js        kiểm tra dữ liệu đặt lịch / đăng ký (khớp với phía client)
-src/notify.js          gửi thông báo Zalo / Messenger / Telegram / Webhook
+src/notify.js          gửi thông báo Zalo / Messenger / Telegram / Webhook / Email
+src/mail.js            gửi email qua Resend, mẫu email xác nhận cho khách
 src/security.js        mã hóa mật khẩu (scrypt), token phiên, giới hạn số lần gửi
 database/schema.sql    cấu trúc database PostgreSQL (không có dữ liệu mẫu)
 render.yaml            cấu hình deploy Render (Blueprint)
