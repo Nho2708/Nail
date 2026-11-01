@@ -26,6 +26,7 @@ function customerEmail(b, s) {
   const next = consult
     ? `${BRAND} sẽ liên hệ với bạn qua Zalo số ${b.phone} trong thời gian sớm nhất ạ.`
     : `Lịch hẹn đang chờ tiệm xác nhận. ${BRAND} sẽ liên hệ qua Zalo số ${b.phone} nếu cần thay đổi ạ.`;
+  const thanks = `Cảm ơn bạn đã tin tưởng và lựa chọn ${BRAND} ạ!`;
   const rows = [
     ['Mã đơn', `#${b.id}`],
     ['Khách hàng', b.name],
@@ -38,7 +39,7 @@ function customerEmail(b, s) {
   const contact = [s.phone && `Điện thoại: ${s.phone}`, s.address && `Địa chỉ: ${s.address}`, s.hours && `Giờ mở cửa: ${s.hours}`].filter(Boolean);
 
   const text = [
-    `Xin chào ${b.name},`, '', `${heading}.`, ...rows.map(([k, v]) => `${k}: ${v}`), '', next, '',
+    `Xin chào ${b.name},`, '', `${heading}.`, ...rows.map(([k, v]) => `${k}: ${v}`), '', next, thanks, '',
     BRAND, ...contact, SITE_URL,
   ].join('\n');
 
@@ -57,7 +58,8 @@ function customerEmail(b, s) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px">
 ${rows.map(([k, v]) => `<tr><td style="padding:6px 0;color:#7a6570;width:120px">${esc(k)}</td><td style="padding:6px 0;font-weight:bold">${esc(v)}</td></tr>`).join('\n')}
 </table>
-<p style="margin:16px 0">${esc(next)}</p>
+<p style="margin:16px 0 8px">${esc(next)}</p>
+<p style="margin:0 0 16px;font-weight:bold;color:${color}">${esc(thanks)}</p>
 </td></tr>
 <tr><td style="padding:16px 28px 24px;border-top:1px solid #eee3dd;font-size:13px;line-height:1.7;color:#7a6570">
 ${contact.map((c) => `${esc(c)}<br>`).join('\n')}
