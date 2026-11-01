@@ -18,6 +18,8 @@ function newToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+const hashToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
 // Tiny in-memory fixed-window rate limiter keyed by IP.
 function rateLimit({ windowMs, max, message }) {
   const hits = new Map();
@@ -31,4 +33,4 @@ function rateLimit({ windowMs, max, message }) {
   };
 }
 
-module.exports = { hashPassword, verifyPassword, newToken, rateLimit };
+module.exports = { hashPassword, verifyPassword, newToken, hashToken, rateLimit };

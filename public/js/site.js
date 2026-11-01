@@ -33,12 +33,24 @@ async function init() {
     toast(e.message, 'error');
   }
   renderAll();
+  hideLoader();
   track();
   wireUI();
   ready = true;
   if (pendingPreview) applyPreview(pendingPreview);
   const params = new URLSearchParams(location.search);
   if (params.has('login')) openAuth('login', params.get('login') === 'admin' ? 'Đăng nhập bằng tài khoản quản trị để vào trang admin.' : '');
+  if (params.has('reset')) {
+    resetToken = params.get('reset');
+    history.replaceState(null, '', location.pathname + location.hash); // keep the token out of the address bar and history
+    openAuth('reset');
+  }
+}
+
+function hideLoader() {
+  const loader = $('#page-loader');
+  loader.classList.add('done');
+  loader.addEventListener('transitionend', () => loader.remove(), { once: true });
 }
 
 function renderAll() {
@@ -568,13 +580,51 @@ function openAuth(mode = 'login', notice = '', then = null) {
   err.textContent = notice;
   openDialog(authDialog);
 }
+const AUTH_TITLES = { login: 'Đăng nhập', register: 'Tạo tài khoản', forgot: 'Quên mật khẩu', reset: 'Đặt mật khẩu mới' };
 function setAuthMode(mode) {
   for (const t of $$('[data-auth]', authDialog)) t.setAttribute('aria-selected', String(t.dataset.auth === mode));
-  $('#login-form').hidden = mode !== 'login';
-  $('#register-form').hidden = mode !== 'register';
-  $('#auth-title').textContent = mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản';
+  $('.tabs', authDialog).hidden = mode === 'forgot' || mode === 'reset';
+  $('#forgot-form .form-ok').hidden = true;
+  for (const m of Object.keys(AUTH_TITLES)) $(`#${m}-form`).hidden = mode !== m;
+  $('#auth-title').textContent = AUTH_TITLES[mode];
 }
 for (const t of $$('[data-auth]', authDialog)) t.onclick = () => setAuthMode(t.dataset.auth);
+for (const t of $$('[data-auth-go]', authDialog)) t.onclick = () => setAuthMode(t.dataset.authGo);
+
+function onAuthSubmit(form, send) {
+  liveValidate(form);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('.form-error', form);
+    err.hidden = true;
+    if (!validateForm(form)) return;
+    const btn = $('button[type=submit]', form);
+    btn.classList.add('loading');
+    try {
+      await send(Object.fromEntries(new FormData(form)));
+    } catch (ex) {
+      applyServerErrors(form, ex.fields);
+      err.textContent = ex.message;
+      err.hidden = false;
+    } finally {
+      btn.classList.remove('loading');
+    }
+  });
+}
+
+onAuthSubmit($('#forgot-form'), async (body) => {
+  await api('/api/auth/forgot', { method: 'POST', body });
+  $('#forgot-form .form-ok').hidden = false;
+});
+
+let resetToken = '';
+onAuthSubmit($('#reset-form'), async ({ password }) => {
+  await api('/api/auth/reset', { method: 'POST', body: { token: resetToken, password } });
+  resetToken = '';
+  $('#reset-form').reset();
+  setAuthMode('login');
+  toast('Đã đổi mật khẩu. Hãy đăng nhập bằng mật khẩu mới.', 'success');
+});
 
 for (const [formId, url] of [['#login-form', '/api/auth/login'], ['#register-form', '/api/auth/register']]) {
   const form = $(formId);

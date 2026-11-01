@@ -175,6 +175,7 @@ async function init() {
   await pool.query(fs.readFileSync(path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8'));
   await ensureAdmin();
   await query('DELETE FROM sessions WHERE expires_at < now()');
+  await query('DELETE FROM password_resets WHERE expires_at < now()');
 }
 
 module.exports = { CACHE_TTL_MS, pool, init, query, one, transaction, getSettings, saveSettings, DEFAULT_SETTINGS, PRIVATE_KEYS, APP_TZ };

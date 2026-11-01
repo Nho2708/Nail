@@ -24,6 +24,13 @@ CREATE INDEX IF NOT EXISTS ix_sessions_expires ON sessions (expires_at);
 -- "Ghi nhớ đăng nhập": remembered sessions last 30 days and renew while used; others end with the browser session
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS remember BOOLEAN NOT NULL DEFAULT TRUE;
 
+-- "Quên mật khẩu": only a hash of the emailed token is stored
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash CHAR(64)    PRIMARY KEY,
+  user_id    INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
 -- ---------- catalogue ----------
 CREATE TABLE IF NOT EXISTS categories (
   id         SERIAL PRIMARY KEY,

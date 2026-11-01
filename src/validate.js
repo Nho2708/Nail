@@ -59,6 +59,8 @@ function validateBooking(body, { openTime = '09:00', closeTime = '19:30', requir
   return { data, errors, ok: Object.keys(errors).length === 0 };
 }
 
+const validPassword = (p) => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+
 function validateRegister(body) {
   const errors = {};
   const data = {
@@ -70,9 +72,8 @@ function validateRegister(body) {
   if (data.name.length < 2 || data.name.length > 60) errors.name = 'Họ tên phải từ 2 đến 60 ký tự.';
   if (!EMAIL_RE.test(data.email)) errors.email = 'Email không hợp lệ.';
   if (!PHONE_RE.test(data.phone)) errors.phone = 'Số điện thoại Việt Nam không hợp lệ.';
-  if (data.password.length < 8 || !/[A-Za-z]/.test(data.password) || !/\d/.test(data.password))
-    errors.password = 'Mật khẩu tối thiểu 8 ký tự, gồm cả chữ và số.';
+  if (!validPassword(data.password)) errors.password = 'Mật khẩu tối thiểu 8 ký tự, gồm cả chữ và số.';
   return { data, errors, ok: Object.keys(errors).length === 0 };
 }
 
-module.exports = { validateBooking, validateRegister, PHONE_RE, EMAIL_RE, normPhone, clean, todayLocal };
+module.exports = { validateBooking, validateRegister, validPassword, PHONE_RE, EMAIL_RE, normPhone, clean, todayLocal };
