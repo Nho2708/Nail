@@ -1,6 +1,10 @@
-// Sends new booking / consultation requests to the admin on every configured channel.
+// Sends new booking / consultation requests to the admin on every configured channel,
+// and an automatic confirmation to the customer's email.
 // Channels are configured in Admin → Thông báo. Unconfigured channels are skipped.
-const { getSettings } = require('./db');
+const { getSettings, one } = require('./db');
+const { sendMail, customerEmail } = require('./mail');
+
+const MAX_CUSTOMER_MAILS_PER_DAY = 3;
 
 function formatMessage(b) {
   const lines = [
@@ -51,6 +55,9 @@ const channels = {
       { recipient: { id: s.notifyMessengerPsid }, messaging_type: 'UPDATE', message: { text } }),
 
   webhook: (s, text, b) => s.notifyWebhookUrl && post(s.notifyWebhookUrl, { text, booking: b }),
+
+  email: (s, text, b) => s.notifyResendKey && s.notifyMailFrom && s.notifySalonEmail &&
+    sendMail(s, { to: s.notifySalonEmail, subject: text.split('\n').slice(0, 2).join(' '), text, replyTo: b.email }),
 };
 
 async function notifyAdmin(booking, only) {
@@ -72,4 +79,20 @@ async function notifyAdmin(booking, only) {
   return result;
 }
 
-module.exports = { notifyAdmin, formatMessage };
+// The form accepts any address, so repeats are capped to stop it being used to flood someone's inbox.
+async function notifyCustomer(booking) {
+  if (!booking.email) return 'skipped';
+  const s = await getSettings({ includePrivate: true });
+  if (!s.notifyResendKey || !s.notifyMailFrom) return 'skipped';
+  try {
+    const { n } = await one(`SELECT COUNT(*) AS n FROM bookings WHERE email = @email AND created_at > now() - interval '1 day'`, { email: booking.email });
+    if (n > MAX_CUSTOMER_MAILS_PER_DAY) return 'skipped';
+    await sendMail(s, { to: booking.email, replyTo: s.notifySalonEmail, key: booking.id ? `booking-${booking.id}` : undefined, ...customerEmail(booking, s) });
+    return 'ok';
+  } catch (e) {
+    console.warn('[notify:customer]', e.message);
+    return 'error: ' + e.message;
+  }
+}
+
+module.exports = { notifyAdmin, notifyCustomer, formatMessage };

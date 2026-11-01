@@ -9,7 +9,7 @@ const VIEWS = {
   services: { title: 'Dịch vụ', render: renderServices },
   customers: { title: 'Khách hàng & phân quyền', render: renderCustomers },
   appearance: { title: 'Thiết kế giao diện', render: renderAppearance },
-  notify: { title: 'Thông báo Zalo / Messenger', render: renderNotify },
+  notify: { title: 'Thông báo', render: renderNotify },
   account: { title: 'Tài khoản admin', render: renderAccount },
 };
 const FINISH = { gloss: 'Bóng', matte: 'Lì', chrome: 'Tráng gương', cateye: 'Mắt mèo' };
@@ -257,7 +257,7 @@ async function renderBookings(highlightNew = false) {
   tbody.innerHTML = bookings.map((b) => {
     const notified = safeJson(b.notified);
     const nb = notified ? Object.entries(notified).filter(([, v]) => v !== 'skipped')
-      .map(([k, v]) => `<span class="${v === 'ok' ? 'ok' : 'err'}" title="${esc(v)}">${esc({ telegram: 'Tele', zalo: 'Zalo', messenger: 'Mess', webhook: 'Hook' }[k])}</span>`).join('') : '';
+      .map(([k, v]) => `<span class="${v === 'ok' ? 'ok' : 'err'}" title="${esc(v)}">${esc({ telegram: 'Tele', zalo: 'Zalo', messenger: 'Mess', webhook: 'Hook', email: 'Mail', customer: 'Khách' }[k])}</span>`).join('') : '';
     const phone = b.phone.replace(/\D/g, '');
     return `<tr data-id="${b.id}" class="${highlightNew && prevIds.size && !prevIds.has(b.id) ? 'new-row' : ''}">
       <td class="small">${b.id}</td>
@@ -879,6 +879,12 @@ async function renderNotify() {
       ${channel('webhook', 'Webhook (Zapier / Make / n8n / Google Sheets…)', on('notifyWebhookUrl'),
         'Hệ thống gửi <code>POST</code> JSON <code>{ text, booking }</code> tới URL https bạn cung cấp.',
         inp('notifyWebhookUrl', 'Webhook URL', 'https://…'))}
+      ${channel('email', 'Email (Resend)', on('notifyResendKey', 'notifyMailFrom', 'notifySalonEmail'),
+        `Khách có điền email sẽ tự nhận email xác nhận, tiệm nhận thêm một email báo lịch mới.
+         <ol><li>Tạo tài khoản tại <strong>resend.com</strong>, thêm tên miền của tiệm trong mục Domains và thêm các bản ghi DNS được yêu cầu.</li>
+         <li>Tạo API Key quyền gửi email, dán vào ô bên dưới.</li>
+         <li>Bấm <strong>Gửi tin thử</strong>: hộp thư của tiệm sẽ nhận email báo lịch và email mẫu gửi cho khách.</li></ol>`,
+        inp('notifyResendKey', 'Resend API Key', 're_…', 'password') + inp('notifyMailFrom', 'Người gửi', 'IYU Nail Art <lichhen@iyunailart.com>') + inp('notifySalonEmail', 'Email của tiệm (nhận thông báo và trả lời khách)', 'tuyetnhi@iyunailart.com'))}
       <div class="form-error" role="alert" hidden></div>
       <div class="save-bar"><button class="btn btn-primary" type="submit">Lưu cấu hình</button></div>
     </form>`;

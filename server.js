@@ -10,8 +10,8 @@ const sharp = require('sharp');
 const db = require('./src/db');
 const { query, one, getSettings, saveSettings, APP_TZ, CACHE_TTL_MS } = db;
 const { hashPassword, verifyPassword, newToken, rateLimit } = require('./src/security');
-const { validateBooking, validateRegister, clean, normPhone, PHONE_RE } = require('./src/validate');
-const { notifyAdmin } = require('./src/notify');
+const { validateBooking, validateRegister, clean, normPhone, PHONE_RE, EMAIL_RE } = require('./src/validate');
+const { notifyAdmin, notifyCustomer } = require('./src/notify');
 const analytics = require('./src/analytics');
 const images = require('./src/images');
 
@@ -269,9 +269,9 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
   if (!created) return res.status(409).json({ error: 'Khung giờ này vừa kín lịch, vui lòng chọn giờ khác.', fields: { time: 'Khung giờ đã kín.' } });
 
   const booking = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id: created.id });
-  // Notify the admin in the background; the result is shown in the admin panel.
-  notifyAdmin(booking)
-    .then((result) => query('UPDATE bookings SET notify_result = @r WHERE id = @id', { r: JSON.stringify(result), id: booking.id }))
+  // Notify the admin and the customer in the background; the result is shown in the admin panel.
+  Promise.all([notifyAdmin(booking), notifyCustomer(booking)])
+    .then(([admin, customer]) => query('UPDATE bookings SET notify_result = @r WHERE id = @id', { r: JSON.stringify({ ...admin, customer }), id: booking.id }))
     .catch((e) => console.warn('[notify]', e.message));
   res.status(201).json({ booking });
 }));
@@ -570,6 +570,7 @@ admin.put('/settings', h(async (req, res) => {
     if (!Number.isInteger(n) || n < 24 || n > 96) return res.status(422).json({ error: 'Chiều cao logo phải từ 24 đến 96px.' });
   }
   if (b.notifyWebhookUrl && !/^https:\/\//.test(b.notifyWebhookUrl)) return res.status(422).json({ error: 'Webhook phải là URL https://' });
+  if (b.notifySalonEmail && !EMAIL_RE.test(b.notifySalonEmail)) return res.status(422).json({ error: 'Email của tiệm không hợp lệ.' });
   await saveSettings(b);
   res.json(await getSettings({ includePrivate: true }));
 }));
@@ -581,8 +582,14 @@ admin.post('/notify-test', h(async (req, res) => {
     date: now.toISOString().slice(0, 10), time: now.toTimeString().slice(0, 5),
     note: 'Nếu bạn nhận được tin này, kênh thông báo đã cấu hình đúng.', user_id: null,
   };
-  const channel = ['telegram', 'zalo', 'messenger', 'webhook'].includes(req.body.channel) ? req.body.channel : undefined;
-  res.json({ result: await notifyAdmin(sample, channel) });
+  const channel = ['telegram', 'zalo', 'messenger', 'webhook', 'email'].includes(req.body.channel) ? req.body.channel : undefined;
+  const result = await notifyAdmin(sample, channel);
+  // The email test also delivers the customer template to the salon mailbox, so the owner can see it.
+  if (channel === 'email' && result.email === 'ok') {
+    const s = await getSettings({ includePrivate: true });
+    result.email = await notifyCustomer({ ...sample, name: 'Khách mẫu', phone: s.phone, email: s.notifySalonEmail, service_name: 'Sơn gel màu cơ bản' });
+  }
+  res.json({ result });
 }));
 
 app.use('/api/admin', admin);

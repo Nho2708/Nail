@@ -119,6 +119,9 @@ const DEFAULT_SETTINGS = {
   notifyMessengerPageToken: '',
   notifyMessengerPsid: '',
   notifyWebhookUrl: '',
+  notifyResendKey: '',
+  notifyMailFrom: '',
+  notifySalonEmail: '',
 };
 const PRIVATE_KEYS = Object.keys(DEFAULT_SETTINGS).filter((k) => k.startsWith('notify'));
 
