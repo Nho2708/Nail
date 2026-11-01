@@ -340,6 +340,11 @@ input::-ms-reveal, input::-ms-clear { display: none; } /* Edge's own eye button 
 .check-row input { width: 18px; height: 18px; accent-color: var(--primary); }
 .inline-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--primary); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .form-error { background: color-mix(in srgb, var(--danger) 8%, #fff); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 25%, #fff); padding: 10px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 14px; }
+.auth-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 12px; }
+.auth-row .check-row { margin: 0; }
+.auth-row .inline-link { font-size: 14px; min-height: 44px; }
+.auth-intro { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+.form-ok { background: color-mix(in srgb, var(--success) 8%, #fff); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 25%, #fff); padding: 10px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 14px; }
 .form-foot { font-size: 13px; color: var(--muted); text-align: center; margin-top: 12px; }
 .form-foot button { background: none; border: 0; color: var(--primary); font-weight: 600; cursor: pointer; text-decoration: underline; padding: 4px; }
 
@@ -477,6 +482,15 @@ input::-ms-reveal, input::-ms-clear { display: none; } /* Edge's own eye button 
   .design-grid { grid-template-columns: 1fr; }
   .brand-tagline { display: none; }
 }
+
+/* ===== Page loader: covers the page until the content is filled in =====
+   The delayed animation hides it even if the JS never runs. */
+.page-loader { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); transition: opacity .3s var(--ease), visibility .3s; animation: page-loader-out .3s 8s forwards; }
+.page-loader.done { opacity: 0; visibility: hidden; }
+.page-loader-logo { height: 56px; width: auto; }
+.page-loader-ring { width: 24px; height: 24px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--primary) 20%, transparent); border-top-color: var(--primary); animation: page-loader-spin .8s linear infinite; }
+@keyframes page-loader-spin { to { transform: rotate(360deg); } }
+@keyframes page-loader-out { to { opacity: 0; visibility: hidden; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }

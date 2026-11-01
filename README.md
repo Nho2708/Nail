@@ -97,6 +97,7 @@ public/admin/          trang quản trị
 
 ## Bảo mật
 
+- Quên mật khẩu: liên kết gửi qua email (cần cấu hình Resend), hiệu lực 30 phút, dùng một lần, database chỉ lưu mã băm; đổi xong sẽ đăng xuất mọi thiết bị.
 - Mật khẩu mã hóa bằng scrypt kèm salt. Phiên đăng nhập lưu trong database, cookie `HttpOnly`, `SameSite=Lax`, và `Secure` khi `NODE_ENV=production`.
 - Phân quyền ở phía server: mọi API `/api/admin/*` và trang `/admin` đều yêu cầu quyền admin.
 - Mọi truy vấn SQL đều dùng tham số. Nội dung do người dùng nhập được escape trước khi hiển thị.

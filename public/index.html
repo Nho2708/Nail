@@ -18,6 +18,7 @@
   </script>
 </head>
 <body>
+  <div class="page-loader" id="page-loader" aria-hidden="true"><!--loader-logo--><span class="page-loader-ring"></span></div>
   <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
 
   <div class="topbar">
@@ -357,9 +358,27 @@
       <form id="login-form" novalidate>
         <div class="field"><label for="li-email">Email</label><input id="li-email" name="email" type="email" autocomplete="username" data-rule="email" required></div>
         <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" name="password" type="password" autocomplete="current-password" data-rule="required" required></div>
-        <label class="check-row"><input type="checkbox" name="remember" checked>Ghi nhớ đăng nhập</label>
+        <div class="auth-row">
+          <label class="check-row"><input type="checkbox" name="remember" checked>Ghi nhớ đăng nhập</label>
+          <button type="button" class="inline-link" data-auth-go="forgot">Quên mật khẩu?</button>
+        </div>
         <div class="form-error" role="alert" hidden></div>
         <button class="btn btn-primary btn-block" type="submit">Đăng nhập</button>
+      </form>
+      <form id="forgot-form" novalidate hidden>
+        <p class="auth-intro">Nhập email đã đăng ký, chúng tôi sẽ gửi liên kết để bạn đặt mật khẩu mới.</p>
+        <div class="field"><label for="fg-email">Email</label><input id="fg-email" name="email" type="email" autocomplete="username" data-rule="email" required></div>
+        <div class="form-error" role="alert" hidden></div>
+        <p class="form-ok" role="status" hidden>Nếu email này đã đăng ký, liên kết đặt lại mật khẩu sẽ được gửi trong ít phút. Hãy kiểm tra cả mục Spam.</p>
+        <button class="btn btn-primary btn-block" type="submit">Gửi liên kết</button>
+        <p class="form-foot"><button type="button" data-auth-go="login">Quay lại đăng nhập</button></p>
+      </form>
+      <form id="reset-form" novalidate hidden>
+        <p class="auth-intro">Đặt mật khẩu mới cho tài khoản của bạn.</p>
+        <div class="field"><label for="rs-pass">Mật khẩu mới</label><input id="rs-pass" name="password" type="password" autocomplete="new-password" data-rule="password" required><p class="hint">Tối thiểu 8 ký tự, gồm cả chữ và số.</p></div>
+        <div class="form-error" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" type="submit">Lưu mật khẩu mới</button>
+        <p class="form-foot"><button type="button" data-auth-go="forgot">Gửi lại liên kết</button></p>
       </form>
       <form id="register-form" novalidate hidden>
         <div class="field"><label for="rg-name">Họ và tên</label><input id="rg-name" name="name" autocomplete="name" data-rule="name" required></div>

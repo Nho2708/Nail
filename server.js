@@ -9,9 +9,10 @@ const sharp = require('sharp');
 
 const db = require('./src/db');
 const { query, one, getSettings, saveSettings, APP_TZ, CACHE_TTL_MS } = db;
-const { hashPassword, verifyPassword, newToken, rateLimit } = require('./src/security');
-const { validateBooking, validateRegister, clean, normPhone, PHONE_RE, EMAIL_RE } = require('./src/validate');
+const { hashPassword, verifyPassword, newToken, hashToken, rateLimit } = require('./src/security');
+const { validateBooking, validateRegister, validPassword, clean, normPhone, PHONE_RE, EMAIL_RE } = require('./src/validate');
 const { notifyAdmin, notifyCustomer } = require('./src/notify');
+const { sendMail, resetEmail } = require('./src/mail');
 const analytics = require('./src/analytics');
 const images = require('./src/images');
 
@@ -20,6 +21,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const REMEMBER_DAYS = 30; // "Ghi nhớ đăng nhập"
 const SHORT_SESSION_HOURS = 12; // not remembered: cookie ends with the browser, server copy after 12h
 const LEGACY_UPLOAD_DIR = path.join(__dirname, 'uploads');
+const RESET_MINUTES = 30; // "Quên mật khẩu" link lifetime
 
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -197,6 +199,45 @@ app.post('/api/auth/logout', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Same answer whether or not the email is registered, and the work happens after responding,
+// so neither the message nor the timing reveals who has an account.
+const resetLimiter = rateLimit({ windowMs: 15 * 60_000, max: 5, message: 'Quá nhiều lần thử, vui lòng đợi 15 phút.' });
+
+app.post('/api/auth/forgot', resetLimiter, h(async (req, res) => {
+  const email = clean(req.body.email).toLowerCase();
+  if (!EMAIL_RE.test(email)) return res.status(422).json({ error: 'Email không hợp lệ.', fields: { email: 'Email không hợp lệ.' } });
+  sendResetLink(email).catch((e) => console.warn('[reset]', e.message));
+  res.json({ ok: true });
+}));
+
+async function sendResetLink(email) {
+  const user = await one('SELECT id, full_name AS name FROM users WHERE email = @email', { email });
+  if (!user) return;
+  // At most one link every 2 minutes, so a registered inbox can't be flooded.
+  const params = { id: user.id, mins: RESET_MINUTES };
+  if (await one('SELECT 1 AS x FROM password_resets WHERE user_id = @id AND expires_at > now() + make_interval(mins => @mins - 2)', params)) return;
+  const s = await getSettings({ includePrivate: true });
+  if (!s.notifyResendKey || !s.notifyMailFrom) { console.warn('[reset] email is not configured'); return; }
+  const token = newToken();
+  await query('DELETE FROM password_resets WHERE user_id = @id', params);
+  await query('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (@hash, @id, now() + make_interval(mins => @mins))',
+    { ...params, hash: hashToken(token) });
+  await sendMail(s, { to: email, replyTo: s.notifySalonEmail, ...resetEmail(user.name, token, RESET_MINUTES, s) });
+}
+
+app.post('/api/auth/reset', resetLimiter, h(async (req, res) => {
+  const password = String(req.body.password || '');
+  if (!validPassword(password)) return res.status(422).json({ error: 'Thông tin chưa hợp lệ.', fields: { password: 'Mật khẩu tối thiểu 8 ký tự, gồm cả chữ và số.' } });
+  const row = await one('SELECT user_id FROM password_resets WHERE token_hash = @hash AND expires_at > now()', { hash: hashToken(req.body.token) });
+  if (!row) return res.status(400).json({ error: 'Liên kết đã hết hạn hoặc không hợp lệ. Vui lòng yêu cầu lại.' });
+  const params = { id: row.user_id };
+  await query('UPDATE users SET password_hash = @hash WHERE id = @id', { ...params, hash: hashPassword(password) });
+  await query('DELETE FROM password_resets WHERE user_id = @id', params);
+  await query('DELETE FROM sessions WHERE user_id = @id', params); // sign out everywhere: the old password may be known to someone else
+  forgetSessions();
+  res.json({ ok: true });
+}));
+
 app.put('/api/auth/profile', requireAuth, h(async (req, res) => {
   const name = clean(req.body.name);
   const phone = normPhone(req.body.phone);
@@ -206,8 +247,7 @@ app.put('/api/auth/profile', requireAuth, h(async (req, res) => {
   if (req.body.newPassword) {
     const u = await one('SELECT password_hash FROM users WHERE id = @id', { id: req.user.id });
     if (!verifyPassword(String(req.body.currentPassword || ''), u.password_hash)) fields.currentPassword = 'Mật khẩu hiện tại không đúng.';
-    const np = String(req.body.newPassword);
-    if (np.length < 8 || !/[A-Za-z]/.test(np) || !/\d/.test(np)) fields.newPassword = 'Tối thiểu 8 ký tự, gồm cả chữ và số.';
+    if (!validPassword(String(req.body.newPassword))) fields.newPassword = 'Tối thiểu 8 ký tự, gồm cả chữ và số.';
   }
   if (Object.keys(fields).length) return res.status(422).json({ error: 'Thông tin chưa hợp lệ.', fields });
   await query('UPDATE users SET full_name = @name, phone = @phone WHERE id = @id', { name, phone: phone || null, id: req.user.id });
@@ -599,18 +639,33 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy 
 if (fs.existsSync(LEGACY_UPLOAD_DIR)) app.use('/uploads', express.static(LEGACY_UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules/three'), { maxAge: '7d' }));
 app.use('/vendor/chart.js', express.static(path.join(__dirname, 'node_modules/chart.js/dist'), { maxAge: '7d' }));
-app.get(['/admin', '/admin/', '/admin/index.html'], (req, res) => {
+// The saved theme goes into the HTML itself. The stylesheet only has default colors, so without this every
+// page load would paint those first and switch to the salon's colors once the JS had fetched the settings.
+const INDEX_HTML = path.join(__dirname, 'public', 'index.html');
+const ADMIN_HTML = path.join(__dirname, 'public', 'admin', 'index.html');
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const cssFont = (name, fallback) => `'${String(name).replace(/[^\w -]/g, '')}', ${fallback}`;
+async function themedPage(file, s) {
+  const css = `:root{--primary:${s.primaryColor};--accent:${s.accentColor};--bg:${s.bgColor};--text:${s.textColor};`
+    + `--radius:${Number(s.radius) || 16}px;--font-heading:${cssFont(s.headingFont, 'Georgia, serif')};--font-body:${cssFont(s.bodyFont, 'system-ui, sans-serif')}}`;
+  const html = await fs.promises.readFile(file, 'utf8');
+  return html
+    .replace(/(<link rel="icon" id="favicon" href=")[^"]*/, (m, start) => (s.logoIcon ? start + escHtml(s.logoIcon) : m))
+    .replace('</head>', () => `<style>${css}</style></head>`);
+}
+
+app.get(['/admin', '/admin/', '/admin/index.html'], h(async (req, res) => {
   if (req.user?.role !== 'admin') return res.redirect('/?login=admin');
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.join(__dirname, 'public/admin/index.html'));
-});
-// Home page: put the configured tab title in the HTML so it is right before JS runs (and for link previews).
-const INDEX_HTML = path.join(__dirname, 'public', 'index.html');
-const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  res.type('html').send(await themedPage(ADMIN_HTML, { ...(await getSettings()), bgColor: '#F7F4F2' }));
+}));
 app.get(['/', '/index.html'], h(async (req, res) => {
   const s = await getSettings();
   const title = (s.siteTitle || '').trim() || [s.brandName, s.tagline].filter(Boolean).join(' · ');
-  const html = (await fs.promises.readFile(INDEX_HTML, 'utf8')).replace(/<title>[^<]*<\/title>/, `<title>${escHtml(title)}</title>`);
+  const html = (await themedPage(INDEX_HTML, s))
+    .replace(/<title>[^<]*<\/title>/, () => `<title>${escHtml(title)}</title>`)
+    .replace(/(<meta name="theme-color" content=")[^"]*/, (m, start) => start + escHtml(s.bgColor))
+    .replace('<!--loader-logo-->', () => (s.logoImage ? `<img class="page-loader-logo" src="${escHtml(s.logoImage)}" alt="">` : ''));
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(html);
 }));
