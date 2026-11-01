@@ -122,6 +122,7 @@ const DEFAULT_SETTINGS = {
   notifyResendKey: '',
   notifyMailFrom: '',
   notifySalonEmail: '',
+  notifyAlertEmail: '', // where new-booking alerts go; empty = notifySalonEmail
 };
 const PRIVATE_KEYS = Object.keys(DEFAULT_SETTINGS).filter((k) => k.startsWith('notify'));
 

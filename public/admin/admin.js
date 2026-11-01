@@ -911,11 +911,11 @@ async function renderNotify() {
         'Hệ thống gửi <code>POST</code> JSON <code>{ text, booking }</code> tới URL https bạn cung cấp.',
         inp('notifyWebhookUrl', 'Webhook URL', 'https://…'))}
       ${channel('email', 'Email (Resend)', on('notifyResendKey', 'notifyMailFrom', 'notifySalonEmail'),
-        `Khách có điền email sẽ tự nhận email xác nhận, tiệm nhận thêm một email báo lịch mới.
+        `Khách có điền email sẽ tự nhận email xác nhận, tiệm nhận thêm một email báo lịch mới. Hộp thư cùng tên miền với người gửi có thể đưa email báo lịch vào Junk, nên hãy nhận bằng một địa chỉ ngoài như Gmail.
          <ol><li>Tạo tài khoản tại <strong>resend.com</strong>, thêm tên miền của tiệm trong mục Domains và thêm các bản ghi DNS được yêu cầu.</li>
          <li>Tạo API Key quyền gửi email, dán vào ô bên dưới.</li>
          <li>Bấm <strong>Gửi tin thử</strong>: hộp thư của tiệm sẽ nhận email báo lịch và email mẫu gửi cho khách.</li></ol>`,
-        inp('notifyResendKey', 'Resend API Key', 're_…', 'password') + inp('notifyMailFrom', 'Người gửi', 'IYU Nail Art <lichhen@iyunailart.com>') + inp('notifySalonEmail', 'Email của tiệm (nhận thông báo và trả lời khách)', 'tuyetnhi@iyunailart.com'))}
+        inp('notifyResendKey', 'Resend API Key', 're_…', 'password') + inp('notifyMailFrom', 'Người gửi', 'IYU Nail Art <lichhen@iyunailart.com>') + inp('notifySalonEmail', 'Email của tiệm (khách trả lời sẽ về đây)', 'tuyetnhi@iyunailart.com') + inp('notifyAlertEmail', 'Email nhận báo lịch mới (nên dùng Gmail)', 'ten@gmail.com'))}
       <div class="form-error" role="alert" hidden></div>
       <div class="save-bar"><button class="btn btn-primary" type="submit">Lưu cấu hình</button></div>
     </form>`;

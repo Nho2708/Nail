@@ -56,8 +56,10 @@ const channels = {
 
   webhook: (s, text, b) => s.notifyWebhookUrl && post(s.notifyWebhookUrl, { text, booking: b }),
 
-  email: (s, text, b) => s.notifyResendKey && s.notifyMailFrom && s.notifySalonEmail &&
-    sendMail(s, { to: s.notifySalonEmail, subject: text.split('\n').slice(0, 2).join(' '), text, replyTo: b.email }),
+  // The salon's OxMail mailbox files mail "from" its own domain sent through Resend as Junk, and Junk is not
+  // forwarded, so alerts should go straight to an outside address (notifyAlertEmail).
+  email: (s, text, b) => s.notifyResendKey && s.notifyMailFrom && (s.notifyAlertEmail || s.notifySalonEmail) &&
+    sendMail(s, { to: s.notifyAlertEmail || s.notifySalonEmail, subject: text.split('\n').slice(0, 2).join(' '), text, replyTo: b.email }),
 };
 
 async function notifyAdmin(booking, only) {

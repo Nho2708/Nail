@@ -631,7 +631,9 @@ admin.put('/settings', h(async (req, res) => {
     if (!Number.isInteger(n) || n < 24 || n > 96) return res.status(422).json({ error: 'Chiều cao logo phải từ 24 đến 96px.' });
   }
   if (b.notifyWebhookUrl && !/^https:\/\//.test(b.notifyWebhookUrl)) return res.status(422).json({ error: 'Webhook phải là URL https://' });
-  if (b.notifySalonEmail && !EMAIL_RE.test(b.notifySalonEmail)) return res.status(422).json({ error: 'Email của tiệm không hợp lệ.' });
+  for (const k of ['notifySalonEmail', 'notifyAlertEmail']) {
+    if (b[k] && !EMAIL_RE.test(b[k])) return res.status(422).json({ error: 'Email của tiệm không hợp lệ.' });
+  }
   await saveSettings(b);
   res.json(await getSettings({ includePrivate: true }));
 }));
@@ -648,7 +650,7 @@ admin.post('/notify-test', h(async (req, res) => {
   // The email test also delivers the customer template to the salon mailbox, so the owner can see it.
   if (channel === 'email' && result.email === 'ok') {
     const s = await getSettings({ includePrivate: true });
-    result.email = await notifyCustomer({ ...sample, name: 'Khách mẫu', phone: s.phone, email: s.notifySalonEmail, service_name: 'Sơn gel màu cơ bản' });
+    result.email = await notifyCustomer({ ...sample, name: 'Khách mẫu', phone: s.phone, email: s.notifyAlertEmail || s.notifySalonEmail, service_name: 'Sơn gel màu cơ bản' });
   }
   res.json({ result });
 }));
