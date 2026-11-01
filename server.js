@@ -10,8 +10,8 @@ const sharp = require('sharp');
 const db = require('./src/db');
 const { query, one, getSettings, saveSettings, APP_TZ, CACHE_TTL_MS } = db;
 const { hashPassword, verifyPassword, newToken, hashToken, rateLimit } = require('./src/security');
-const { validateBooking, validateRegister, validPassword, clean, normPhone, PHONE_RE, EMAIL_RE } = require('./src/validate');
-const { notifyAdmin, notifyCustomer } = require('./src/notify');
+const { validateBooking, validateRegister, validPassword, clean, normPhone, todayLocal, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE } = require('./src/validate');
+const { notifyAdmin, notifyCustomer, notifyBookingChange } = require('./src/notify');
 const { sendMail, resetEmail } = require('./src/mail');
 const analytics = require('./src/analytics');
 const images = require('./src/images');
@@ -404,8 +404,29 @@ admin.get('/bookings', h(async (req, res) => {
 admin.patch('/bookings/:id', h(async (req, res) => {
   const status = req.body.status;
   if (!['pending', 'confirmed', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
-  await query('UPDATE bookings SET status = @status WHERE id = @id', { status, id: Number(req.params.id) || 0 });
-  res.json({ ok: true });
+  const id = Number(req.params.id) || 0;
+  const booking = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id });
+  if (!booking) return res.status(404).json({ error: 'Không tìm thấy lịch hẹn.' });
+  await query('UPDATE bookings SET status = @status WHERE id = @id', { status, id });
+  const emailed = status !== booking.status && (status === 'confirmed' || status === 'cancelled');
+  res.json({ ok: true, mail: emailed ? await notifyBookingChange(status, booking) : 'skipped' });
+}));
+
+admin.put('/bookings/:id/schedule', h(async (req, res) => {
+  const id = Number(req.params.id) || 0;
+  const before = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id });
+  if (!before) return res.status(404).json({ error: 'Không tìm thấy lịch hẹn.' });
+  if (before.type !== 'booking') return res.status(400).json({ error: 'Yêu cầu tư vấn không có lịch hẹn để đổi.' });
+  const date = clean(req.body.date);
+  const time = clean(req.body.time);
+  const serviceId = Number(req.body.service_id) || null;
+  if (!DATE_RE.test(date) || (date !== before.date && date < todayLocal())) return res.status(422).json({ error: 'Ngày hẹn không hợp lệ hoặc đã qua.' });
+  if (!TIME_RE.test(time)) return res.status(422).json({ error: 'Giờ hẹn không hợp lệ.' });
+  if (serviceId && !(await one('SELECT id FROM services WHERE id = @id', { id: serviceId }))) return res.status(422).json({ error: 'Dịch vụ không còn tồn tại.' });
+  if (date === before.date && time === before.time && serviceId === before.service_id) return res.json({ ok: true, mail: 'skipped' });
+  await query('UPDATE bookings SET booking_date = @date::date, booking_time = @time, service_id = @serviceId WHERE id = @id', { id, date, time, serviceId });
+  const after = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id });
+  res.json({ ok: true, mail: await notifyBookingChange('changed', after, before) });
 }));
 
 admin.delete('/bookings/:id', h(async (req, res) => {

@@ -74,7 +74,7 @@ Database không có dữ liệu mẫu. Sau khi đăng nhập admin, nên tạo t
 Mỗi lịch hẹn hoặc yêu cầu tư vấn mới sẽ:
 
 - được gửi tới mọi kênh đã cấu hình: **Zalo OA API v3** (tin tư vấn tới `user_id` của admin đã quan tâm OA), **Messenger Send API** (tới PSID của admin, trong cửa sổ 24 giờ), **Telegram Bot**, **Webhook** (Zapier, Make, n8n…) hoặc **Email** (Resend). Kết quả gửi hiện ở cột *Báo admin* trong danh sách lịch hẹn;
-- nếu khách điền email và đã cấu hình Resend, khách tự nhận email xác nhận (mỗi địa chỉ tối đa 3 email trong 24 giờ). Render bản miễn phí chặn cổng SMTP nên không gửi trực tiếp qua hộp thư của tiệm được;
+- nếu khách điền email và đã cấu hình Resend, khách tự nhận email xác nhận (mỗi địa chỉ tối đa 3 email trong 24 giờ), và nhận thêm email khi tiệm chuyển lịch sang *Đã xác nhận*, *Đã hủy* hoặc đổi lịch bằng nút lịch trong danh sách lịch hẹn. Render bản miễn phí chặn cổng SMTP nên không gửi trực tiếp qua hộp thư của tiệm được;
 - hiện thông báo trong trang quản trị (tự kiểm tra mỗi phút khi tab đang mở, có thể bật thông báo trình duyệt bằng biểu tượng chuông);
 - ở phía khách, màn hình xác nhận có nút **Gửi qua Zalo** và **Gửi qua Messenger** để khách nhắn trực tiếp cho tiệm.
 

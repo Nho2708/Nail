@@ -28,7 +28,7 @@ function page(s, contact, body) {
 <tr><td style="padding:20px 28px;border-bottom:3px solid ${color}">
 <table role="presentation" cellpadding="0" cellspacing="0"><tr>
 <td style="padding-right:14px"><img src="${SITE_URL}/images/logo-email.png" width="79" height="56" alt="IYU" style="display:block;border:0"></td>
-<td style="font-size:20px;font-weight:bold;color:${color}">IYU Nail Art</td>
+<td style="font-size:20px;font-weight:bold;color:${color}">Nail Art</td>
 </tr></table>
 </td></tr>
 <tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.6">
@@ -41,42 +41,83 @@ ${contact.map((c) => `${esc(c)}<br>`).join('\n')}
 </table></body></html>`;
 }
 
-// The automatic reply a customer receives. The note is left out on purpose: the address is unverified,
-// so nothing free-form may be relayed to it through the salon's domain.
-function customerEmail(b, s) {
-  const consult = b.type === 'consult';
-  const heading = consult ? 'Chúng tôi đã nhận yêu cầu tư vấn của bạn' : 'Chúng tôi đã nhận lịch hẹn của bạn';
-  const next = consult
-    ? `${BRAND} sẽ liên hệ với bạn qua Zalo số ${b.phone} trong thời gian sớm nhất ạ.`
-    : `Lịch hẹn đang chờ tiệm xác nhận. ${BRAND} sẽ liên hệ qua Zalo số ${b.phone} nếu cần thay đổi ạ.`;
-  const thanks = `Cảm ơn bạn đã tin tưởng và lựa chọn ${BRAND} ạ!`;
-  const rows = [
-    ['Mã đơn', `#${b.id}`],
-    ['Khách hàng', b.name],
-    ['Số điện thoại', b.phone],
-    b.date && ['Thời gian', `${b.time} ngày ${b.date.split('-').reverse().join('/')}`],
-    b.service_name && ['Dịch vụ', b.service_name],
-    b.design_title && ['Mẫu', b.design_title],
-    (b.color_name || b.custom_color) && ['Màu', b.color_name || `Màu tự chọn ${b.custom_color}`],
-  ].filter(Boolean);
-  const contact = contactLines(s);
+const when = (b) => `${b.time} ngày ${b.date.split('-').reverse().join('/')}`;
 
+const bookingRows = (b) => [
+  ['Mã đơn', `#${b.id}`],
+  ['Khách hàng', b.name],
+  ['Số điện thoại', b.phone],
+  b.date && ['Thời gian', when(b)],
+  b.service_name && ['Dịch vụ', b.service_name],
+  b.design_title && ['Mẫu', b.design_title],
+  (b.color_name || b.custom_color) && ['Màu', b.color_name || `Màu tự chọn ${b.custom_color}`],
+].filter(Boolean);
+
+function bookingMail(b, s, { subject, heading, rows, next, thanks }) {
+  const contact = contactLines(s);
   const text = [
     `Xin chào ${b.name},`, '', `${heading}.`, ...rows.map(([k, v]) => `${k}: ${v}`), '', next, thanks, '',
     BRAND, ...contact, SITE_URL,
   ].join('\n');
-
-  const color = esc(s.primaryColor);
   const html = page(s, contact, `<p style="margin:0 0 12px">Xin chào <strong>${esc(b.name)}</strong>,</p>
 <p style="margin:0 0 16px;font-size:18px;font-weight:bold">${esc(heading)}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px">
 ${rows.map(([k, v]) => `<tr><td style="padding:6px 0;color:#7a6570;width:120px">${esc(k)}</td><td style="padding:6px 0;font-weight:bold">${esc(v)}</td></tr>`).join('\n')}
 </table>
 <p style="margin:16px 0 8px">${esc(next)}</p>
-<p style="margin:0 0 16px;font-weight:bold;color:${color}">${esc(thanks)}</p>`);
+<p style="margin:0 0 16px;font-weight:bold;color:${esc(s.primaryColor)}">${esc(thanks)}</p>`);
+  return { subject: `${BRAND}: ${subject}`, html, text };
+}
 
-  const subject = `${BRAND}: đã nhận ${consult ? 'yêu cầu tư vấn' : 'lịch hẹn'} #${b.id}`;
-  return { subject, html, text };
+// The automatic reply a customer receives. The note is left out on purpose: the address is unverified,
+// so nothing free-form may be relayed to it through the salon's domain.
+function customerEmail(b, s) {
+  const consult = b.type === 'consult';
+  return bookingMail(b, s, {
+    subject: `đã nhận ${consult ? 'yêu cầu tư vấn' : 'lịch hẹn'} #${b.id}`,
+    heading: consult ? 'Chúng tôi đã nhận yêu cầu tư vấn của bạn' : 'Chúng tôi đã nhận lịch hẹn của bạn',
+    rows: bookingRows(b),
+    next: consult
+      ? `${BRAND} sẽ liên hệ với bạn qua Zalo số ${b.phone} trong thời gian sớm nhất ạ.`
+      : `Lịch hẹn đang chờ tiệm xác nhận. ${BRAND} sẽ liên hệ qua Zalo số ${b.phone} nếu cần thay đổi ạ.`,
+    thanks: `Cảm ơn bạn đã tin tưởng và lựa chọn ${BRAND} ạ!`,
+  });
+}
+
+// Sent when the salon confirms, reschedules or cancels. `before` is the booking prior to a reschedule.
+function changeEmail(kind, b, s, before) {
+  const consult = b.type === 'consult';
+  const what = consult ? 'yêu cầu tư vấn' : 'lịch hẹn';
+  const rows = bookingRows(b);
+  if (kind === 'changed') {
+    const swap = (label, oldLabel, newLabel, oldValue) => {
+      const i = rows.findIndex(([k]) => k === label);
+      rows.splice(i, 1, [oldLabel, oldValue], [newLabel, rows[i][1]]);
+    };
+    if (before.date !== b.date || before.time !== b.time) swap('Thời gian', 'Thời gian cũ', 'Thời gian mới', when(before));
+    if (before.service_name && b.service_name && before.service_name !== b.service_name) swap('Dịch vụ', 'Dịch vụ cũ', 'Dịch vụ mới', before.service_name);
+  }
+  const thanks = kind === 'cancelled' ? `Cảm ơn bạn đã quan tâm đến ${BRAND} ạ!` : `Cảm ơn bạn đã tin tưởng và lựa chọn ${BRAND} ạ!`;
+  const copy = {
+    confirmed: {
+      subject: `đã xác nhận ${what} #${b.id}`,
+      heading: `${BRAND} đã xác nhận ${what} của bạn`,
+      next: consult
+        ? `Tiệm sẽ liên hệ với bạn qua Zalo số ${b.phone} trong thời gian sớm nhất ạ.`
+        : 'Tiệm rất mong được đón bạn đúng giờ ạ. Nếu cần đổi lịch, vui lòng báo trước cho tiệm.',
+    },
+    changed: {
+      subject: `lịch hẹn #${b.id} đã thay đổi`,
+      heading: 'Lịch hẹn của bạn đã được thay đổi',
+      next: 'Nếu thông tin mới chưa phù hợp, vui lòng liên hệ tiệm để được sắp xếp lại ạ.',
+    },
+    cancelled: {
+      subject: `đã hủy ${what} #${b.id}`,
+      heading: `${consult ? 'Yêu cầu tư vấn' : 'Lịch hẹn'} của bạn đã được hủy`,
+      next: 'Nếu cần đặt lại, bạn có thể đặt lịch trên website hoặc liên hệ tiệm ạ.',
+    },
+  }[kind];
+  return bookingMail(b, s, { ...copy, rows, thanks });
 }
 
 function resetEmail(name, token, minutes, s) {
@@ -91,4 +132,4 @@ function resetEmail(name, token, minutes, s) {
   return { subject: `${BRAND}: đặt lại mật khẩu`, html, text };
 }
 
-module.exports = { sendMail, customerEmail, resetEmail };
+module.exports = { sendMail, customerEmail, changeEmail, resetEmail };
