@@ -222,9 +222,11 @@ async function drawCharts(series) {
 
 // ---------------------------------------------------------------- bookings
 const bkFilter = { q: '', status: '', type: '' };
+let shownBookings = new Map();
 async function renderBookings(highlightNew = false) {
   const qs = new URLSearchParams(Object.entries(bkFilter).filter(([, v]) => v)).toString();
   const { bookings } = await api(`/api/admin/bookings?${qs}`);
+  shownBookings = new Map(bookings.map((b) => [b.id, b]));
   const prevIds = new Set($$('tr[data-id]', view).map((r) => Number(r.dataset.id)));
   const exists = $('#bk-table', view);
   if (!exists) {
@@ -247,6 +249,7 @@ async function renderBookings(highlightNew = false) {
     $('#bk-refresh').onclick = () => renderBookings();
     $('#bk-table').addEventListener('change', onBookingStatus);
     $('#bk-table').addEventListener('click', onBookingDelete);
+    $('#bk-table').addEventListener('click', onBookingSchedule);
   }
   $('#bk-csv').onclick = () => exportCsv(bookings);
   const tbody = $('#bk-table tbody');
@@ -270,7 +273,7 @@ async function renderBookings(highlightNew = false) {
       <td class="small" style="max-width:220px">${esc(b.note || '')}</td>
       <td><label><span class="sr-only">Trạng thái lịch #${b.id}</span><select class="status-select ${STATUS[b.status].cls}" data-status="${b.id}">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === b.status ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label></td>
       <td><span class="notif-ic">${nb || '<span class="small muted">Chưa cấu hình</span>'}</span></td>
-      <td><div class="row-actions"><button class="icon-btn danger" data-del="${b.id}" aria-label="Xóa lịch #${b.id}">${icon('trash', 18)}</button></div></td>
+      <td><div class="row-actions">${b.type === 'booking' && ['pending', 'confirmed'].includes(b.status) ? `<button class="icon-btn" data-schedule="${b.id}" aria-label="Đổi lịch #${b.id}" title="Đổi lịch">${icon('calendar', 18)}</button>` : ''}<button class="icon-btn danger" data-del="${b.id}" aria-label="Xóa lịch #${b.id}">${icon('trash', 18)}</button></div></td>
     </tr>`;
   }).join('');
 }
@@ -280,10 +283,38 @@ async function onBookingStatus(e) {
   const sel = e.target.closest('[data-status]');
   if (!sel) return;
   try {
-    await api(`/api/admin/bookings/${sel.dataset.status}`, { method: 'PATCH', body: { status: sel.value } });
+    const { mail } = await api(`/api/admin/bookings/${sel.dataset.status}`, { method: 'PATCH', body: { status: sel.value } });
     sel.className = `status-select ${STATUS[sel.value].cls}`;
-    toast(`Đã cập nhật: ${STATUS[sel.value].label}`, 'success');
+    savedToast(`Đã cập nhật: ${STATUS[sel.value].label}`, mail);
     pollBookings();
+  } catch (err) { toast(err.message, 'error'); }
+}
+function savedToast(message, mail) {
+  if (mail === 'ok') toast(`${message}. Đã gửi email cho khách.`, 'success');
+  else if (mail?.startsWith('error')) toast(`${message}, nhưng chưa gửi được email: ${mail}`, 'error');
+  else toast(message, 'success');
+}
+async function onBookingSchedule(e) {
+  const btn = e.target.closest('[data-schedule]');
+  if (!btn) return;
+  const b = shownBookings.get(Number(btn.dataset.schedule));
+  try {
+    const { services } = await api('/api/admin/services');
+    openEditor({
+      title: `Đổi lịch hẹn #${b.id}`,
+      fields: [
+        { name: 'date', label: 'Ngày hẹn', type: 'date', required: true },
+        { name: 'time', label: 'Giờ hẹn', type: 'time', required: true },
+        { name: 'service_id', label: 'Dịch vụ', type: 'select', options: [['', 'Không chọn'], ...services.map((s) => [s.id, s.name])], hint: b.email ? `Khách sẽ nhận email báo thay đổi tại ${esc(b.email)}.` : 'Khách không để lại email, hãy báo khách qua Zalo hoặc điện thoại.' },
+      ],
+      values: { date: b.date, time: b.time, service_id: b.service_id },
+      submitLabel: 'Lưu thay đổi',
+      onSubmit: async (data) => {
+        const { mail } = await api(`/api/admin/bookings/${b.id}/schedule`, { method: 'PUT', body: data });
+        savedToast('Đã đổi lịch hẹn', mail);
+        renderBookings();
+      },
+    });
   } catch (err) { toast(err.message, 'error'); }
 }
 async function onBookingDelete(e) {
@@ -377,7 +408,7 @@ function fieldHtml(f, v) {
         <p class="hint">JPG, PNG, WEBP tối đa 8MB. Ảnh được tự động tối ưu.</p></div>
         <input type="hidden" name="${f.name}" value="${esc(val)}" data-thumb="${esc(f.thumb || '')}">
       </div></div>`;
-    default: return `<div class="field"><label for="${id}">${f.label}${req}</label><input id="${id}" name="${f.name}" type="${f.type === 'number' ? 'number' : 'text'}" ${f.type === 'number' ? `min="0" step="${f.step || 1000}" inputmode="numeric"` : ''} value="${esc(val)}" maxlength="${f.max || 120}" ${f.suggest?.length ? `list="${id}-list" autocomplete="off"` : ''}>${f.suggest?.length ? `<datalist id="${id}-list">${f.suggest.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>` : ''}${hint}</div>`;
+    default: return `<div class="field"><label for="${id}">${f.label}${req}</label><input id="${id}" name="${f.name}" type="${['number', 'date', 'time'].includes(f.type) ? f.type : 'text'}" ${f.type === 'number' ? `min="0" step="${f.step || 1000}" inputmode="numeric"` : ''} value="${esc(val)}" maxlength="${f.max || 120}" ${f.suggest?.length ? `list="${id}-list" autocomplete="off"` : ''}>${f.suggest?.length ? `<datalist id="${id}-list">${f.suggest.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>` : ''}${hint}</div>`;
   }
 }
 

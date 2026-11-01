@@ -2,7 +2,7 @@
 // and an automatic confirmation to the customer's email.
 // Channels are configured in Admin → Thông báo. Unconfigured channels are skipped.
 const { getSettings, one } = require('./db');
-const { sendMail, customerEmail } = require('./mail');
+const { sendMail, customerEmail, changeEmail } = require('./mail');
 
 const MAX_CUSTOMER_MAILS_PER_DAY = 3;
 
@@ -95,4 +95,18 @@ async function notifyCustomer(booking) {
   }
 }
 
-module.exports = { notifyAdmin, notifyCustomer, formatMessage };
+// Confirmation, reschedule or cancellation by the salon. Started by the admin, so no daily cap.
+async function notifyBookingChange(kind, booking, before) {
+  if (!booking.email) return 'skipped';
+  const s = await getSettings({ includePrivate: true });
+  if (!s.notifyResendKey || !s.notifyMailFrom) return 'skipped';
+  try {
+    await sendMail(s, { to: booking.email, replyTo: s.notifySalonEmail, ...changeEmail(kind, booking, s, before) });
+    return 'ok';
+  } catch (e) {
+    console.warn('[notify:customer]', e.message);
+    return 'error: ' + e.message;
+  }
+}
+
+module.exports = { notifyAdmin, notifyCustomer, notifyBookingChange, formatMessage };

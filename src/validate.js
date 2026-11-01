@@ -76,4 +76,4 @@ function validateRegister(body) {
   return { data, errors, ok: Object.keys(errors).length === 0 };
 }
 
-module.exports = { validateBooking, validateRegister, validPassword, PHONE_RE, EMAIL_RE, normPhone, clean, todayLocal };
+module.exports = { validateBooking, validateRegister, validPassword, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE, normPhone, clean, todayLocal };
