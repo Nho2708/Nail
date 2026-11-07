@@ -305,9 +305,9 @@ async function onBookingSchedule(e) {
       fields: [
         { name: 'date', label: 'Ngày hẹn', type: 'date', required: true },
         { name: 'time', label: 'Giờ hẹn', type: 'time', required: true },
-        { name: 'service_id', label: 'Dịch vụ', type: 'select', options: [['', 'Không chọn'], ...services.map((s) => [s.id, s.name])], hint: b.email ? `Khách sẽ nhận email báo thay đổi tại ${esc(b.email)}.` : 'Khách không để lại email, hãy báo khách qua Zalo hoặc điện thoại.' },
+        { name: 'service_ids', label: 'Dịch vụ', type: 'checks', options: services.map((s) => [s.id, s.name]), hint: b.email ? `Khách sẽ nhận email báo thay đổi tại ${esc(b.email)}.` : 'Khách không để lại email, hãy báo khách qua Zalo hoặc điện thoại.' },
       ],
-      values: { date: b.date, time: b.time, service_id: b.service_id },
+      values: { date: b.date, time: b.time, service_ids: b.service_ids?.length ? b.service_ids : [b.service_id].filter(Boolean) },
       submitLabel: 'Lưu thay đổi',
       onSubmit: async (data) => {
         const { mail } = await api(`/api/admin/bookings/${b.id}/schedule`, { method: 'PUT', body: data });
@@ -358,7 +358,7 @@ function openEditor({ title, fields, values = {}, submitLabel = 'Lưu', onSubmit
     let first = null;
     for (const f of fields) {
       const input = form.elements[f.name];
-      if (!input || f.type === 'checkbox') continue;
+      if (!input || f.type === 'checkbox' || f.type === 'checks') continue;
       const v = String(input.value || '').trim();
       let msg = '';
       if (f.required && !v) msg = f.type === 'image' ? 'Vui lòng tải ảnh lên.' : 'Vui lòng điền thông tin này.';
@@ -373,7 +373,9 @@ function openEditor({ title, fields, values = {}, submitLabel = 'Lưu', onSubmit
     const data = {};
     for (const f of fields) {
       const input = form.elements[f.name];
-      data[f.name] = f.type === 'checkbox' ? input.checked : f.type === 'number' ? Number(input.value || 0) : input.value.trim();
+      data[f.name] = f.type === 'checkbox' ? input.checked
+        : f.type === 'checks' ? $$(`input[name="${f.name}"]:checked`, form).map((i) => Number(i.value))
+        : f.type === 'number' ? Number(input.value || 0) : input.value.trim();
       if (f.type === 'image') data[f.name + '_thumb'] = form.elements[f.name].dataset.thumb || '';
     }
     const btn = $('button[type=submit]', form);
@@ -398,6 +400,7 @@ function fieldHtml(f, v) {
   const val = v ?? f.default ?? '';
   switch (f.type) {
     case 'textarea': return `<div class="field"><label for="${id}">${f.label}${req}</label><textarea id="${id}" name="${f.name}" rows="3" maxlength="${f.max || 500}">${esc(val)}</textarea>${hint}</div>`;
+    case 'checks': return `<fieldset class="field checks"><legend class="label">${f.label}${req}</legend><div class="checks-list">${f.options.map(([k, l]) => `<label class="check"><input type="checkbox" name="${f.name}" value="${esc(k)}" ${[].concat(val).map(String).includes(String(k)) ? 'checked' : ''}>${esc(l)}</label>`).join('')}</div>${hint}</fieldset>`;
     case 'select': return `<div class="field"><label for="${id}">${f.label}${req}</label><select id="${id}" name="${f.name}">${f.options.map(([k, l]) => `<option value="${esc(k)}" ${String(k) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>${hint}</div>`;
     case 'checkbox': return `<label class="check"><input type="checkbox" name="${f.name}" ${val === true || val === 1 || (val === '' && f.default) ? 'checked' : ''}>${f.label}</label>`;
     case 'color': return `<div class="field"><label for="${id}">${f.label}${req}</label><div class="color-field"><input type="color" value="${esc(val || '#E9B8B0')}" aria-label="Chọn màu"><input id="${id}" name="${f.name}" value="${esc((val || '#E9B8B0').toUpperCase())}" maxlength="7" spellcheck="false"></div>${hint}</div>`;

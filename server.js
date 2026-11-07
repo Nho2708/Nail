@@ -10,7 +10,7 @@ const sharp = require('sharp');
 const db = require('./src/db');
 const { query, one, getSettings, saveSettings, APP_TZ, CACHE_TTL_MS } = db;
 const { hashPassword, verifyPassword, newToken, hashToken, rateLimit } = require('./src/security');
-const { validateBooking, validateRegister, validPassword, clean, normPhone, todayLocal, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE } = require('./src/validate');
+const { validateBooking, validateRegister, validPassword, serviceIdList, clean, normPhone, todayLocal, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE } = require('./src/validate');
 const { notifyAdmin, notifyCustomer, notifyBookingChange } = require('./src/notify');
 const { sendMail, resetEmail } = require('./src/mail');
 const analytics = require('./src/analytics');
@@ -262,12 +262,22 @@ app.put('/api/auth/profile', requireAuth, h(async (req, res) => {
 const BOOKING_SELECT = `SELECT b.id, b.kind AS type, b.user_id, b.full_name AS name, b.phone, b.email,
   to_char(b.booking_date, 'YYYY-MM-DD') AS date, b.booking_time AS time, b.service_id, b.design_id,
   b.color_id, b.custom_color, b.note, b.status, b.notify_result AS notified, b.created_at,
-  s.name AS service_name, d.title AS design_title, COALESCE(d.thumb_url, d.image_url) AS design_thumb,
+  COALESCE((SELECT string_agg(sv.name, ', ' ORDER BY sv.sort_order, sv.id) FROM booking_services bs
+    JOIN services sv ON sv.id = bs.service_id WHERE bs.booking_id = b.id), s.name) AS service_name,
+  ARRAY(SELECT bs.service_id FROM booking_services bs WHERE bs.booking_id = b.id ORDER BY bs.service_id) AS service_ids,
+  d.title AS design_title, COALESCE(d.thumb_url, d.image_url) AS design_thumb,
   c.name AS color_name, c.hex AS color_hex
   FROM bookings b
   LEFT JOIN services s ON s.id = b.service_id
   LEFT JOIN designs d ON d.id = b.design_id
   LEFT JOIN colors c ON c.id = b.color_id`;
+
+const servicesExist = async (ids) => !ids.length
+  || (await one('SELECT COUNT(*) AS n FROM services WHERE id = ANY(@ids::int[])', { ids })).n === ids.length;
+async function setBookingServices(bookingId, ids, tx) {
+  await query('DELETE FROM booking_services WHERE booking_id = @bookingId', { bookingId }, tx);
+  if (ids.length) await query('INSERT INTO booking_services (booking_id, service_id) SELECT @bookingId, unnest(@ids::int[])', { bookingId, ids }, tx);
+}
 
 const bookingLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, message: 'Bạn đã gửi quá nhiều yêu cầu, vui lòng thử lại sau.' });
 
@@ -282,10 +292,11 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
   const s = await getSettings();
   const requireService = !!(await one('SELECT id FROM services WHERE is_active LIMIT 1'));
   const { data, errors } = validateBooking(body, { openTime: s.openTime, closeTime: s.closeTime, requireService });
-  const refs = [['service_id', 'services'], ['design_id', 'designs'], ['color_id', 'colors']];
+  const refs = [['design_id', 'designs'], ['color_id', 'colors']];
   for (const [k, table] of refs) {
     if (data[k] && !(await one(`SELECT id FROM ${table} WHERE id = @id`, { id: data[k] }))) errors[k] = 'Lựa chọn không còn tồn tại.';
   }
+  if (!(await servicesExist(data.service_ids))) errors.service_ids = 'Có dịch vụ không còn tồn tại, vui lòng chọn lại.';
   if (Object.keys(errors).length) return res.status(422).json({ error: 'Vui lòng kiểm tra lại thông tin.', fields: errors });
 
   const capacity = Math.max(1, Number(s.slotCapacity) || 3);
@@ -302,9 +313,11 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
         WHERE booking_date = @date::date AND booking_time = @time AND status IN ('pending', 'confirmed')`, params, tx);
       if (taken.n >= capacity) return null;
     }
-    return one(`INSERT INTO bookings (kind, user_id, full_name, phone, email, booking_date, booking_time, service_id, design_id, color_id, custom_color, note)
+    const row = await one(`INSERT INTO bookings (kind, user_id, full_name, phone, email, booking_date, booking_time, service_id, design_id, color_id, custom_color, note)
       VALUES (@kind, @userId, @name, @phone, @email, @date::date, @time, @serviceId, @designId, @colorId, @customColor, @note)
       RETURNING id`, params, tx);
+    await setBookingServices(row.id, data.service_ids, tx);
+    return row;
   });
   if (!created) return res.status(409).json({ error: 'Khung giờ này vừa kín lịch, vui lòng chọn giờ khác.', fields: { time: 'Khung giờ đã kín.' } });
 
@@ -419,12 +432,16 @@ admin.put('/bookings/:id/schedule', h(async (req, res) => {
   if (before.type !== 'booking') return res.status(400).json({ error: 'Yêu cầu tư vấn không có lịch hẹn để đổi.' });
   const date = clean(req.body.date);
   const time = clean(req.body.time);
-  const serviceId = Number(req.body.service_id) || null;
+  const ids = serviceIdList(req.body);
   if (!DATE_RE.test(date) || (date !== before.date && date < todayLocal())) return res.status(422).json({ error: 'Ngày hẹn không hợp lệ hoặc đã qua.' });
   if (!TIME_RE.test(time)) return res.status(422).json({ error: 'Giờ hẹn không hợp lệ.' });
-  if (serviceId && !(await one('SELECT id FROM services WHERE id = @id', { id: serviceId }))) return res.status(422).json({ error: 'Dịch vụ không còn tồn tại.' });
-  if (date === before.date && time === before.time && serviceId === before.service_id) return res.json({ ok: true, mail: 'skipped' });
-  await query('UPDATE bookings SET booking_date = @date::date, booking_time = @time, service_id = @serviceId WHERE id = @id', { id, date, time, serviceId });
+  if (!(await servicesExist(ids))) return res.status(422).json({ error: 'Có dịch vụ không còn tồn tại.' });
+  const sameServices = [...ids].sort((a, b) => a - b).join() === [...(before.service_ids || [])].sort((a, b) => a - b).join();
+  if (date === before.date && time === before.time && sameServices) return res.json({ ok: true, mail: 'skipped' });
+  await db.transaction(async (tx) => {
+    await query('UPDATE bookings SET booking_date = @date::date, booking_time = @time, service_id = @serviceId WHERE id = @id', { id, date, time, serviceId: ids[0] || null }, tx);
+    await setBookingServices(id, ids, tx);
+  });
   const after = await one(`${BOOKING_SELECT} WHERE b.id = @id`, { id });
   res.json({ ok: true, mail: await notifyBookingChange('changed', after, before) });
 }));

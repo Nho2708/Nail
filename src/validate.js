@@ -12,6 +12,12 @@ function todayLocal() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+// Services picked for a booking: an array or "1,2,3", falling back to the old single service_id.
+function serviceIdList(body) {
+  const raw = Array.isArray(body.service_ids) ? body.service_ids : String(body.service_ids ?? body.service_id ?? '').split(',');
+  return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 10);
+}
+
 function validateBooking(body, { openTime = '09:00', closeTime = '19:30', requireService = true } = {}) {
   const errors = {};
   const type = body.type === 'consult' ? 'consult' : 'booking';
@@ -23,7 +29,7 @@ function validateBooking(body, { openTime = '09:00', closeTime = '19:30', requir
     date: clean(body.date),
     time: clean(body.time),
     note: clean(body.note),
-    service_id: body.service_id ? Number(body.service_id) : null,
+    service_ids: serviceIdList(body),
     design_id: body.design_id ? Number(body.design_id) : null,
     color_id: body.color_id ? Number(body.color_id) : null,
     custom_color: clean(body.custom_color) || null,
@@ -51,11 +57,13 @@ function validateBooking(body, { openTime = '09:00', closeTime = '19:30', requir
       const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       if (data.time <= hm) errors.time = 'Giờ hẹn hôm nay đã qua, vui lòng chọn giờ khác.';
     }
-    if (requireService && !data.service_id) errors.service_id = 'Vui lòng chọn dịch vụ.';
+    if (requireService && !data.service_ids.length) errors.service_ids = 'Vui lòng chọn ít nhất một dịch vụ.';
   } else {
     data.date = null;
     data.time = null;
+    data.service_ids = [];
   }
+  data.service_id = data.service_ids[0] || null;
   return { data, errors, ok: Object.keys(errors).length === 0 };
 }
 
@@ -76,4 +84,4 @@ function validateRegister(body) {
   return { data, errors, ok: Object.keys(errors).length === 0 };
 }
 
-module.exports = { validateBooking, validateRegister, validPassword, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE, normPhone, clean, todayLocal };
+module.exports = { validateBooking, validateRegister, validPassword, serviceIdList, PHONE_RE, EMAIL_RE, DATE_RE, TIME_RE, normPhone, clean, todayLocal };
