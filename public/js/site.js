@@ -349,15 +349,12 @@ function openBooking({ kind = 'booking', design = null, color = null, customColo
   $('#bk-body').hidden = false;
   $('#bk-success').hidden = true;
 
-  // services
-  const sel = $('#bk-service');
+  // services: several can be picked; the menu's "Đặt" button pre-ticks its own
   const services = state.catalog.services;
-  sel.innerHTML = '<option value="">— Chọn dịch vụ —</option>' +
-    services.map((s) => `<option value="${s.id}">${esc(s.name)}${s.price_from ? ` · từ ${vnd(s.price_from)}` : ''}</option>`).join('');
-  sel.closest('.field').hidden = !services.length;
-  sel.dataset.rule = services.length ? 'required' : '';
-  if (serviceId) sel.value = serviceId;
-  else if (state.user && services.length) sel.value = services[0].id; // one-click for members
+  const picked = $('#bk-services');
+  picked.closest('.field').hidden = !services.length;
+  picked.dataset.rule = services.length ? 'required' : '';
+  renderServicePicker(serviceId ? [Number(serviceId)] : []);
 
   // date
   const date = $('#bk-date');
@@ -371,6 +368,30 @@ function openBooking({ kind = 'booking', design = null, color = null, customColo
   openDialog(bkDialog);
   loadSlots(true);
 }
+
+function renderServicePicker(selected) {
+  const groups = new Map();
+  for (const s of state.catalog.services) {
+    const g = (s.group || '').trim();
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(s);
+  }
+  $('#bk-service-list').innerHTML = [...groups].map(([g, items]) => `
+    <fieldset class="svc-group">${g ? `<legend>${esc(g)}</legend>` : ''}
+      ${items.map((s) => `<label class="svc-opt"><input type="checkbox" value="${s.id}" ${selected.includes(s.id) ? 'checked' : ''}>
+        <span class="svc-name">${esc(s.name)}</span><span class="svc-price">${vnd(s.price_from)}</span></label>`).join('')}
+    </fieldset>`).join('');
+  syncServices();
+}
+function syncServices() {
+  const ids = $$('#bk-service-list input:checked').map((i) => Number(i.value));
+  const input = $('#bk-services');
+  input.value = ids.join(',');
+  if (ids.length) setFieldError(input, '');
+  const total = state.catalog.services.filter((s) => ids.includes(s.id)).reduce((n, s) => n + (Number(s.price_from) || 0), 0);
+  $('#bk-service-total').textContent = ids.length ? `Đã chọn ${ids.length} dịch vụ${total ? ` · tạm tính từ ${vnd(total)}` : ''}` : '';
+}
+$('#bk-service-list').addEventListener('change', syncServices);
 
 function setKind(kind) {
   state.bk.kind = kind;
@@ -480,7 +501,7 @@ bkForm.addEventListener('submit', async (e) => {
     custom_color: state.bk.color ? null : state.bk.customColor,
   };
   if (!contactFromAccount) Object.assign(body, { name: f.get('name'), phone: f.get('phone'), email: f.get('email') });
-  if (kind === 'booking') Object.assign(body, { service_id: f.get('service_id') || null, date: f.get('date'), time: f.get('time') });
+  if (kind === 'booking') Object.assign(body, { service_ids: String(f.get('service_ids') || '').split(',').filter(Boolean).map(Number), date: f.get('date'), time: f.get('time') });
   await submitBooking(body, $('#bk-submit'));
 });
 

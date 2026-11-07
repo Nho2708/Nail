@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS bookings (
   CONSTRAINT ck_bookings_schedule CHECK (kind = 'consult' OR (booking_date IS NOT NULL AND booking_time IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS ix_bookings_slot ON bookings (booking_date, booking_time);
+
+-- A booking can include several services. bookings.service_id keeps the first one.
+CREATE TABLE IF NOT EXISTS booking_services (
+  booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  PRIMARY KEY (booking_id, service_id)
+);
+-- bookings made before multi-service support
+INSERT INTO booking_services (booking_id, service_id)
+  SELECT id, service_id FROM bookings
+  WHERE service_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM booking_services bs WHERE bs.booking_id = bookings.id)
+  ON CONFLICT DO NOTHING;
 CREATE INDEX IF NOT EXISTS ix_bookings_user ON bookings (user_id);
 
 -- ---------- visit analytics ----------

@@ -318,8 +318,10 @@
 
         <div id="bk-schedule">
           <div class="field">
-            <label for="bk-service">Dịch vụ <span class="req" aria-hidden="true">*</span></label>
-            <select id="bk-service" name="service_id" data-rule="required" data-msg="Vui lòng chọn dịch vụ." required></select>
+            <span class="label" id="bk-service-label">Dịch vụ <span class="req" aria-hidden="true">*</span> <span class="opt">(chọn một hoặc nhiều)</span></span>
+            <input type="hidden" name="service_ids" id="bk-services" data-rule="required" data-msg="Vui lòng chọn ít nhất một dịch vụ.">
+            <div class="svc-picker" id="bk-service-list" role="group" aria-labelledby="bk-service-label"></div>
+            <p class="svc-total" id="bk-service-total" aria-live="polite"></p>
           </div>
           <div class="field">
             <label for="bk-date">Ngày hẹn <span class="req" aria-hidden="true">*</span></label>

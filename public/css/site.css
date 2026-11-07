@@ -355,6 +355,18 @@ input::-ms-reveal, input::-ms-clear { display: none; } /* Edge's own eye button 
 .slot:disabled { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
 .slots-empty { grid-column: 1 / -1; font-size: 14px; color: var(--muted); padding: 8px 0; }
 
+.svc-picker { max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 4px 12px; overscroll-behavior: contain; }
+.svc-group { border: 0; margin: 0; padding: 8px 0 4px; }
+.svc-group + .svc-group { border-top: 1px solid var(--line); }
+.svc-group legend { padding: 0; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.svc-opt { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; cursor: pointer; }
+.svc-opt input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--primary); }
+.svc-opt .svc-name { flex: 1; }
+.svc-opt .svc-price { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.svc-opt:has(input:checked) .svc-name { font-weight: 600; }
+.svc-total { font-size: 13px; color: var(--primary); font-weight: 600; margin-top: 6px; }
+.svc-total:empty { display: none; }
+.has-error .svc-picker { border-color: var(--danger); }
 .picked { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .picked:empty { display: none; }
 .picked-item { display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
