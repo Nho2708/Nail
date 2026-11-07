@@ -456,13 +456,15 @@ async function loadSlots(autoPick = false) {
   const req = ++slotReq;
   box.setAttribute('aria-busy', 'true');
   let full = [];
-  try { full = (await api(`/api/slots?date=${date}`)).full; } catch { /* show all slots */ }
+  let busy = []; // time ranges held by confirmed bookings
+  try { ({ full, busy = [] } = await api(`/api/slots?date=${date}`)); } catch { /* show all slots */ }
   if (req !== slotReq) return;
   box.removeAttribute('aria-busy');
   const now = new Date();
   const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const isToday = date === todayISO();
-  const slots = timeSlots().map((t) => ({ t, off: full.includes(t) || (isToday && t <= nowHM) }));
+  const held = (t) => busy.some((b) => t >= b.from && t < b.to);
+  const slots = timeSlots().map((t) => ({ t, off: full.includes(t) || held(t) || (isToday && t <= nowHM) }));
   const free = slots.filter((s) => !s.off);
   if (!free.length) {
     // Today is over / fully booked — jump to the next day for convenience.

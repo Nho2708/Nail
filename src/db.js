@@ -106,6 +106,7 @@ const DEFAULT_SETTINGS = {
   openTime: '09:00',
   closeTime: '19:30',
   slotCapacity: '3',
+  bookingBlockMinutes: '60', // a confirmed booking keeps its start time and the following minutes unavailable
   zaloPhone: '',
   messengerUsername: '',
   facebookUrl: '',

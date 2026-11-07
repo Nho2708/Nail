@@ -279,6 +279,13 @@ async function setBookingServices(bookingId, ids, tx) {
   if (ids.length) await query('INSERT INTO booking_services (booking_id, service_id) SELECT @bookingId, unnest(@ids::int[])', { bookingId, ids }, tx);
 }
 
+// A confirmed booking holds [start, start + bookingBlockMinutes) for everyone else.
+const blockMinutes = (s) => Math.min(480, Math.max(0, Math.round(Number(s.bookingBlockMinutes ?? 60) || 0)));
+const addMinutes = (hm, mins) => {
+  const total = Math.min(24 * 60, Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5)) + mins);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
 const bookingLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, message: 'Bạn đã gửi quá nhiều yêu cầu, vui lòng thử lại sau.' });
 
 app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
@@ -312,6 +319,9 @@ app.post('/api/bookings', bookingLimiter, h(async (req, res) => {
       const taken = await one(`SELECT COUNT(*) AS n FROM bookings
         WHERE booking_date = @date::date AND booking_time = @time AND status IN ('pending', 'confirmed')`, params, tx);
       if (taken.n >= capacity) return null;
+      const block = blockMinutes(s);
+      if (block && await one(`SELECT 1 AS x FROM bookings WHERE booking_date = @date::date AND status = 'confirmed'
+        AND booking_time <= @time AND @time < to_char(booking_time::time + make_interval(mins => @block), 'HH24:MI') LIMIT 1`, { ...params, block }, tx)) return null;
     }
     const row = await one(`INSERT INTO bookings (kind, user_id, full_name, phone, email, booking_date, booking_time, service_id, design_id, color_id, custom_color, note)
       VALUES (@kind, @userId, @name, @phone, @email, @date::date, @time, @serviceId, @designId, @colorId, @customColor, @note)
@@ -348,7 +358,13 @@ app.get('/api/slots', h(async (req, res) => {
   const capacity = Math.max(1, Number(s.slotCapacity) || 3);
   const rows = await query(`SELECT booking_time AS time, COUNT(*) AS n FROM bookings
     WHERE booking_date = @date::date AND status IN ('pending', 'confirmed') GROUP BY booking_time`, { date });
-  res.json({ full: rows.filter((r) => r.n >= capacity).map((r) => r.time) });
+  const block = blockMinutes(s);
+  const confirmed = block ? await query(`SELECT DISTINCT booking_time AS time FROM bookings
+    WHERE booking_date = @date::date AND status = 'confirmed'`, { date }) : [];
+  res.json({
+    full: rows.filter((r) => r.n >= capacity).map((r) => r.time),
+    busy: confirmed.map((r) => ({ from: r.time, to: addMinutes(r.time, block) })),
+  });
 }));
 
 // ---------------- admin API ----------------
@@ -646,6 +662,10 @@ admin.put('/settings', h(async (req, res) => {
   if (b.logoHeight != null) {
     const n = Number(b.logoHeight);
     if (!Number.isInteger(n) || n < 24 || n > 96) return res.status(422).json({ error: 'Chiều cao logo phải từ 24 đến 96px.' });
+  }
+  if (b.bookingBlockMinutes != null) {
+    const n = Number(b.bookingBlockMinutes);
+    if (!Number.isInteger(n) || n < 0 || n > 480) return res.status(422).json({ error: 'Thời gian giữ chỗ phải là số phút từ 0 đến 480.' });
   }
   if (b.notifyWebhookUrl && !/^https:\/\//.test(b.notifyWebhookUrl)) return res.status(422).json({ error: 'Webhook phải là URL https://' });
   for (const k of ['notifySalonEmail', 'notifyAlertEmail']) {

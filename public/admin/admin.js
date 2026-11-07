@@ -771,7 +771,7 @@ async function renderAppearance() {
         <details><summary>${icon('pin', 18)}Liên hệ & giờ mở cửa</summary><div class="inner">
           ${text('phone', 'Số điện thoại hiển thị', 20)}${text('address', 'Địa chỉ', 200)}${text('hours', 'Giờ mở cửa (hiển thị)')}
           <div class="field-row">${text('openTime', 'Giờ nhận khách đầu tiên (HH:mm)', 5)}${text('closeTime', 'Giờ nhận khách cuối (HH:mm)', 5)}</div>
-          ${text('slotCapacity', 'Số khách tối đa mỗi khung 30 phút', 2)}
+          <div class="field-row">${text('slotCapacity', 'Số khách tối đa mỗi khung 30 phút', 2)}${text('bookingBlockMinutes', 'Lịch đã xác nhận giữ chỗ (phút, 0 = tắt)', 3)}</div>
           ${text('zaloPhone', 'Số Zalo của tiệm (nút chat Zalo)', 15)}${text('messengerUsername', 'Username Facebook Page (nút Messenger, m.me/…)', 80)}
           ${text('facebookUrl', 'Link Facebook', 300)}${text('instagramUrl', 'Link Instagram', 300)}${text('tiktokUrl', 'Link TikTok', 300)}${text('mapUrl', 'Link Google Maps', 300)}
         </div></details>
